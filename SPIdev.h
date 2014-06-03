@@ -4,29 +4,60 @@
 #include <SPI.h>
 #include "crc8.h"
 
-volatile byte SPI_ptr = 0;                                                       
-volatile byte SPI_size = 0;                                                      
-unsigned char SPI_buf[128];                                                       
+#define BUF_SIZE 64
+
+volatile byte SPI_iptr = 0;                                                       
+volatile byte SPI_isize = 0;                                                      
+unsigned char SPI_ibuf[BUF_SIZE];                                                       
+volatile byte SPI_optr = 0;                                                       
+volatile byte SPI_osize = 0;                                                      
+unsigned char SPI_obuf[BUF_SIZE];                                                       
 
 int SPI_resetBuf() {
-    SPI_ptr = 0;
-    SPI_size = 0;
+    SPI_iptr = 0;
+    SPI_isize = 0;
     return 0;
 }
 
 int SPI_getByte(byte *b) {                                                      
-    if (!SPI_size) return -1;                                                    
+    if (!SPI_isize) return -1;                                                    
 
-    if (SPI_ptr<SPI_size)                                                        
-        (*b) = SPI_buf[sizeof SPI_buf - SPI_size-- + SPI_ptr];                       
-    else (*b) = SPI_buf[SPI_ptr - SPI_size--];                                   
+    if (SPI_iptr<SPI_isize)                                                        
+        (*b) = SPI_ibuf[BUF_SIZE - SPI_isize-- + SPI_iptr];                       
+    else (*b) = SPI_ibuf[SPI_iptr - SPI_isize--];                                   
 
     return 0;                                                                    
 }                                                                                
 
+void SPI_sendBytes(uint8_t *data, byte len) {
+    static bool firstLoad = 0;
+    if (SPI_osize+len>=BUF_SIZE) {
+#ifdef DEBUG
+        Serial.println("SPI out buf full!");
+        //if you decide to wrap the buffer, will need to change firstLoad to load a new byte into reg
+#endif
+        return;
+    } else if (!SPI_osize) firstLoad = 0;
+    data[len] = CRC8((byte*)data,len);
+    len++;
+
+    for (int i=0;i<len;i++) {
+        if (SPI_optr >= BUF_SIZE) SPI_optr = 0;
+        SPI_obuf[SPI_optr++] = data[i];
+        if (++SPI_osize > BUF_SIZE) SPI_osize = BUF_SIZE;                          
+    }
+
+    if (!firstLoad) {
+        if (SPI_optr<SPI_osize)                                                        
+            SPDR = SPI_obuf[BUF_SIZE - SPI_osize-- + SPI_optr];  
+        else SPDR = SPI_obuf[SPI_optr - SPI_osize--];       
+        firstLoad = 1;
+    }
+}
+
 int SPI_getPacket(byte *b) {
     byte c;
-    int j = SPI_size;
+    int j = SPI_isize;
 
     if (j<4) return -1; //type, val(2), crc
 
@@ -36,9 +67,9 @@ int SPI_getPacket(byte *b) {
     SPI_getByte(&c);
 
     if (CRC8(b,3)!=c) {
-        static unsigned int n = 0;
         SPI_resetBuf();
 #ifdef DEBUG
+        static unsigned int n = 0;
         Serial.print("SPI packet corrupted!! t: "); Serial.print(b[0],DEC); Serial.print(" v: "); Serial.print(*((int*)(b+1)),DEC); Serial.println(n++);
 #endif
         return -1;
@@ -48,7 +79,7 @@ int SPI_getPacket(byte *b) {
 }
 
 int16_t SPI_getInt16(int *i) {
-    if (SPI_size<2) return -1;                                                    
+    if (SPI_isize<2) return -1;                                                    
     byte b1,b2;
     SPI_getByte(&b1);
     SPI_getByte(&b2);
@@ -56,13 +87,20 @@ int16_t SPI_getInt16(int *i) {
 }
 
 ISR (SPI_STC_vect) {                                                             
-    byte c = SPDR;                                                               
-    if (SPI_ptr >= sizeof SPI_buf)    
-        SPI_ptr = 0;                                                             
+    byte c = SPDR;   
+    
+    if (SPI_osize) {
+        if (SPI_optr<SPI_osize)                                                        
+            SPDR = SPI_obuf[BUF_SIZE - SPI_osize-- + SPI_optr];  
+        else SPDR = SPI_obuf[SPI_optr - SPI_osize--];                                   
+    } else SPDR = 0;
 
-    SPI_buf[SPI_ptr++] = c;                                                      
+    if (SPI_iptr >= BUF_SIZE)    
+        SPI_iptr = 0;                                                             
 
-    if (++SPI_size > sizeof SPI_buf) SPI_size = sizeof SPI_buf;                          
+    SPI_ibuf[SPI_iptr++] = c;                                                      
+
+    if (++SPI_isize > BUF_SIZE) SPI_isize = BUF_SIZE;                          
 } 
 #endif
 

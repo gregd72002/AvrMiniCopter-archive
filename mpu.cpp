@@ -1,10 +1,12 @@
 #include "mpu.h"
 #include "inv_mpu.h"
 #include "inv_mpu_dmp_motion_driver.h"
+#include "helper_3dmath.h"
 
 #define FSR 2000
 //#define GYRO_SENS       ( 131.0f * 250.f / (float)FSR )
 #define GYRO_SENS       16.375f 
+#define ACCEL_SENS      16384.0f
 #define QUAT_SENS       1073741824.f //2^30
 
 #define EPSILON         0.0001f
@@ -21,6 +23,7 @@ union u_quat {
 
 static int ret;
 static short gyro[3];
+static short accel[3];
 static short sensors;
 static unsigned char fifoCount;
 
@@ -76,7 +79,7 @@ int mympu_open(unsigned int rate) {
 	if (ret) return 100+ret;
 #endif
 
-	ret = dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT|DMP_FEATURE_SEND_CAL_GYRO|DMP_FEATURE_GYRO_CAL);
+	ret = dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT|DMP_FEATURE_SEND_CAL_GYRO|DMP_FEATURE_GYRO_CAL|DMP_FEATURE_SEND_RAW_ACCEL);
 //	ret = dmp_enable_feature(DMP_FEATURE_SEND_CAL_GYRO|DMP_FEATURE_GYRO_CAL);
 #ifdef MPU_DEBUG
 	if (ret) return 110+ret;
@@ -143,7 +146,7 @@ int mympu_update() {
 		if (ret!=0) return ret; 
 	} while (fifoCount>1);
 */
-    ret = dmp_read_fifo(gyro,NULL,q._l,NULL,&sensors,&fifoCount);
+    ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
     if (ret!=0) return ret; 
     if (fifoCount>10) { 
 #ifdef DEBUG
@@ -162,13 +165,31 @@ int mympu_update() {
 
 
 	quaternionToEuler( &q._f, &mympu.ypr[2], &mympu.ypr[1], &mympu.ypr[0] );
-	
+
 	/* need to adjust signs and do the wraps depending on the MPU mount orientation */ 
 	/* if axis is no centered around 0 but around i.e 90 degree due to mount orientation */
 	/* then do:  mympu.ypr[x] = wrap_180(90.f+rad2deg(mympu.ypr[x])); */
 	mympu.ypr[0] = -rad2deg(mympu.ypr[0]);
 	mympu.ypr[1] = rad2deg(mympu.ypr[1]);
 	mympu.ypr[2] = -shift_180(rad2deg(mympu.ypr[2]));
+/*
+    mympu.accel[0] = (float)accel[0] / ACCEL_SENS;
+    mympu.accel[1] = (float)accel[1] / ACCEL_SENS;
+    mympu.accel[2] = (float)accel[2] / ACCEL_SENS;
+*/
+    VectorInt16 a;
+    a.x = (float)accel[0];
+    a.y = (float)accel[1];
+    a.z = (float)accel[2];
+    Quaternion qq;
+    qq.w=q._f.w;
+    qq.x=q._f.x;
+    qq.y=q._f.y;
+    qq.z=q._f.z;
+    a.rotate(&qq);
+    mympu.accel[0] = (float)a.x/ACCEL_SENS;
+    mympu.accel[1] = (float)a.y/ACCEL_SENS;
+    mympu.accel[2] = (float)a.z/ACCEL_SENS;
 
 	/* need to adjust signs depending on the MPU mount orientation */ 
 	mympu.gyro[0] = (float)gyro[2] / GYRO_SENS;
