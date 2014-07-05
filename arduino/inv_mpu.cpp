@@ -2439,7 +2439,7 @@ int mpu_get_compass_reg(short *data, unsigned long *timestamp)
 #if defined AK8975_SECONDARY
     /* AK8975 doesn't have the overrun error bit. */
     if (!(tmp[0] & AKM_DATA_READY))
-        return -5;
+        return 1;
     if ((tmp[7] & AKM_OVERFLOW) || (tmp[7] & AKM_DATA_ERROR))
         return -6;
 #elif defined AK8963_SECONDARY

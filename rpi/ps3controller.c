@@ -16,6 +16,7 @@ static int ret;
 static int i;
 static int throttle_threshold;
 static int nc=0;
+static int setting = 0;
 struct s_rec rec;
 
 static int map(int x, int in_min, int in_max, int out_min, int out_max) {
@@ -28,10 +29,14 @@ int rec_open() {
 		printf("can't open js0: [%i] [%s]\n", fd, strerror(errno));
 		return -1;
 	}
-	throttle_threshold = config.rec[4] - config.rec[3];
+	throttle_threshold = config.rec_t[1] - config.rec_t[0];
     rec.yprt[0] = rec.yprt[1] = rec.yprt[2] = rec.yprt[3] = 0.0f;
-    rec.aux=0;
+    rec.aux=-1;
 	return rec_update();
+}
+
+void rec_setSetting(int i) {
+    setting = i;
 }
 
 int process_jsevent(struct js_event *e) {
@@ -48,10 +53,10 @@ int process_jsevent(struct js_event *e) {
     else if ((e->type==JS_EVENT_AXIS) && (e->number<4)) {
 		//printf("A %2u VAL: %4i\n",e->number,e->value);
 		switch(e->number) {
-			case 0: rec.yprt[0] = map(e->value,-32767,32767,config.rec[0],-config.rec[0]); nc=1; break;
-			case 1: rec.yprt[3] = map(e->value,-32767,32767,config.rec[4],config.rec[4]-2*throttle_threshold); nc=1; break;
-			case 2: rec.yprt[2] = map(e->value,-32767,32767,config.rec[2],-config.rec[2]); nc=1; break;
-			case 3: rec.yprt[1] = map(e->value,-32767,32767,config.rec[1],-config.rec[1]); nc=1; break;
+			case 0: rec.yprt[0] = map(e->value,-32767,32767,config.rec_ypr[setting][0],-config.rec_ypr[setting][0]); nc=1; break;
+			case 1: rec.yprt[3] = map(e->value,-32767,32767,config.rec_t[1],config.rec_t[1]-2*throttle_threshold); nc=1; break;
+			case 2: rec.yprt[2] = map(e->value,-32767,32767,config.rec_ypr[setting][2],-config.rec_ypr[setting][2]); nc=1; break;
+			case 3: rec.yprt[1] = map(e->value,-32767,32767,config.rec_ypr[setting][1],-config.rec_ypr[setting][1]); nc=1; break;
 		}
 	}
 	return 0;	

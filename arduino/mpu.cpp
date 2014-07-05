@@ -24,19 +24,30 @@ union u_quat {
 static int ret;
 static short gyro[3];
 static short accel[3];
+static short comp[3];
 static short sensors;
 static unsigned char fifoCount;
+static unsigned int _rate;
+static unsigned int _c;
 
 int mympu_open(unsigned int rate) {
+    _rate = rate;
+    _c = 0;
   	mpu_select_device(0);
    	mpu_init_structures();
+
+    mympu.gravity = 0.f;
 
 	ret = mpu_init(NULL);
 #ifdef MPU_DEBUG
 	if (ret) return 10+ret;
 #endif
 	
-	ret = mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL); 
+	ret = mpu_set_sensors(INV_XYZ_GYRO|INV_XYZ_ACCEL
+#ifdef MPU9150
+           |INV_XYZ_COMPASS
+#endif
+        ); 
 #ifdef MPU_DEBUG
 	if (ret) return 20+ret;
 #endif
@@ -51,14 +62,22 @@ int mympu_open(unsigned int rate) {
 	if (ret) return 40+ret;
 #endif
 
+#ifdef MPU9150
+        ret = mpu_set_compass_sample_rate(50);
+#endif
+
+#ifdef MPU_DEBUG
+	if (ret) return 50+ret;
+#endif
+
         mpu_get_power_state((unsigned char *)&ret);
 #ifdef MPU_DEBUG
-	if (!ret) return 50+ret;
+	if (!ret) return 60+ret;
 #endif
 
         ret = mpu_configure_fifo(INV_XYZ_GYRO|INV_XYZ_ACCEL);
 #ifdef MPU_DEBUG
-	if (ret) return 60+ret;
+	if (ret) return 70+ret;
 #endif
 
 	dmp_select_device(0);
@@ -131,6 +150,22 @@ static inline float shift_180(float x) {
     return x+180>180?x-180:x+180;
 }
 
+int mympu_update_compass() {
+    if (_c <_rate/50) return 1;
+
+    ret = mpu_get_compass_reg(comp,NULL);
+    if (ret!=0) return ret; 
+
+    mympu.comp[0] = comp[0];
+    mympu.comp[1] = comp[1];
+    mympu.comp[2] = comp[2];
+
+    _c = 0;
+
+    return 0;
+}
+
+
 int mympu_update() {
 /*
 	do {
@@ -146,13 +181,14 @@ int mympu_update() {
 		if (ret!=0) return ret; 
 	} while (fifoCount>1);
 */
+    sensors = 0;
     ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
     if (ret!=0) return ret; 
-    if (fifoCount>10) { 
+    if (fifoCount>1) { 
 #ifdef DEBUG
-        Serial.print("ERRR:"); Serial.println(fifoCount); 
+        Serial.print("ERR Fifocount: "); Serial.println(fifoCount); 
         do {
-            ret = dmp_read_fifo(gyro,NULL,q._l,NULL,&sensors,&fifoCount);
+            ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
         } while (fifoCount>1 && ret == 0);
 #endif
         return -200;
@@ -163,38 +199,35 @@ int mympu_update() {
 	q._f.y = (float)q._l[2] / (float)QUAT_SENS;
 	q._f.z = (float)q._l[3] / (float)QUAT_SENS;
 
-
 	quaternionToEuler( &q._f, &mympu.ypr[2], &mympu.ypr[1], &mympu.ypr[0] );
-
 	/* need to adjust signs and do the wraps depending on the MPU mount orientation */ 
 	/* if axis is no centered around 0 but around i.e 90 degree due to mount orientation */
 	/* then do:  mympu.ypr[x] = wrap_180(90.f+rad2deg(mympu.ypr[x])); */
 	mympu.ypr[0] = -rad2deg(mympu.ypr[0]);
 	mympu.ypr[1] = rad2deg(mympu.ypr[1]);
 	mympu.ypr[2] = -shift_180(rad2deg(mympu.ypr[2]));
-/*
-    mympu.accel[0] = (float)accel[0] / ACCEL_SENS;
-    mympu.accel[1] = (float)accel[1] / ACCEL_SENS;
-    mympu.accel[2] = (float)accel[2] / ACCEL_SENS;
-*/
-    VectorInt16 a;
-    a.x = (float)accel[0];
-    a.y = (float)accel[1];
-    a.z = (float)accel[2];
-    Quaternion qq;
+
+    static Quaternion qq;
     qq.w=q._f.w;
     qq.x=q._f.x;
     qq.y=q._f.y;
     qq.z=q._f.z;
+
+    VectorInt16 a;
+    a.x = (float)accel[0];
+    a.y = (float)accel[1];
+    a.z = (float)accel[2];
     a.rotate(&qq);
     mympu.accel[0] = (float)a.x/ACCEL_SENS;
     mympu.accel[1] = (float)a.y/ACCEL_SENS;
-    mympu.accel[2] = (float)a.z/ACCEL_SENS;
+    mympu.accel[2] = (float)a.z/ACCEL_SENS - mympu.gravity;
 
 	/* need to adjust signs depending on the MPU mount orientation */ 
 	mympu.gyro[0] = (float)gyro[2] / GYRO_SENS;
 	mympu.gyro[1] = -(float)gyro[1] / GYRO_SENS;
 	mympu.gyro[2] = (float)gyro[0] / GYRO_SENS;
+
+    _c++;
 
 	return 0;
 }

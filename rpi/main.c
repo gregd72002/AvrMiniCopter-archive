@@ -25,37 +25,35 @@
 int ret;
 int err = 0;
 
+unsigned long flight_time = 0;
+
 int trim[3] = {0,0,0};//in degrees * 1000
 int mode = 0;
-int gentle = 0;
+int rec_setting = 0;
 
 int alt_hold = 0;
-int constrain = 0;
-int alt_target = 0;
-struct s_pid pid_alt;
+int throttle_hold = 0;
+int throttle_target = 0;
 
 void sendPIDs() {
     for (int i=0;i<3;i++) 
-        for (int j=2;j<5;j++) {
+        for (int j=0;j<5;j++) {
             spi_sendIntPacket(100+i*10+j,&config.r_pid[i][j]);
             spi_sendIntPacket(200+i*10+j,&config.s_pid[i][j]);
         }
 
+    for (int i=0;i<3;i++) { 
+        printf("Sending pid: %i v: %i",80+i,config.alt_pid[i]);
+        spi_sendIntPacket(80+i,&config.alt_pid[i]);
+        spi_sendIntPacket(90+i,&config.vz_pid[i]);
+    }
 }
 
 void sendConfig() {
     for (int i=0;i<3;i++)
         spi_sendIntPacket(20+i,&trim[i]);
 
-    //delay_ms(5);
-    for (int i=0;i<3;i++) { 
-        for (int j=0;j<5;j++) {
-            spi_sendIntPacket(100+i*10+j,&config.r_pid[i][j]);
-            //            delay_ms(5);
-            spi_sendIntPacket(200+i*10+j,&config.s_pid[i][j]);
-            //            delay_ms(5);
-        }
-    }
+    sendPIDs();
 
     spi_sendIntPacket(0x01,&mode);
 }
@@ -78,6 +76,7 @@ void do_adjustments() {
     static int adj1; //for Kp
     static int adj2; //for Ki
     static int adj3 = 500; //for trim
+    static int adj4 = 500; //for altitude (mm)
 
     static int *v1,*v2,*v3,*v4;
     static int _dummy = 0;
@@ -85,47 +84,52 @@ void do_adjustments() {
 
     if (mode == 0) { //normal - stabilized flight mode
         adj1 = 100;
-        adj2 = 500;
+        adj2 = 100;
         v1 = &config.s_pid[1][2];
         v2 = &config.s_pid[2][2];
         v3 = &config.s_pid[1][3];
         v4 = &config.s_pid[2][3];
-    } else if (mode == 1) { //setup mode - setup yaw
-        adj1 = 25;
-        v1 = &config.r_pid[0][2];
-        v2 = v3 = v4 = dummy;
-    } else if (mode == 2) { //setup pitch
-        adj1 = 25;
+    } else if (mode == 1) { //rate
+        adj1 = 50;
+        adj2 = 50;
         v1 = &config.r_pid[1][2];
-        v2 = v3 = v4 = dummy;
-    } else if (mode == 3) { //setup roll
-        adj1 = 25;
-        v1 = &config.r_pid[2][2];
-        v2 = v3 = v4 = dummy;
-    }
+        v2 = &config.r_pid[2][2];
+        v3 = &config.r_pid[1][3];
+        v4 = &config.r_pid[2][3];
+    } 
 
     switch (rec.aux) {
         case 10:
-            if (rec.yprt[3]<1060) {
+            if (rec.yprt[3]<1060 && !alt_hold) {
                 (*v1)+=adj1; (*v2)+=adj1; checkPIDs(); sendPIDs(); 
-            } 
-            if (alt_hold) alt_target+=5;
+            } else {
+                config.alt_pid[2] += 5;
+                spi_sendIntPacket(82,&config.alt_pid[2]);
+            }
             break;
         case 8:
-            if (rec.yprt[3]<1060) {
+            if (rec.yprt[3]<1060 && !alt_hold) {
                 (*v1)-=adj1; (*v2)-=adj1; checkPIDs(); sendPIDs(); 
-            } 
-            if (alt_hold) alt_target-=5;
+            } else {
+                config.alt_pid[2] -= 5;
+                spi_sendIntPacket(82,&config.alt_pid[2]);
+            }
             break;
         case 11:
-            if (rec.yprt[3]<1060) {
-                (*v3)+=adj2; (*v3)+=adj2; checkPIDs(); sendPIDs();
-            } 
+            if (rec.yprt[3]<1060 && !alt_hold) {
+                (*v3)+=adj2; (*v4)+=adj2; checkPIDs(); sendPIDs();
+            } else {
+                int t = adj4;
+                spi_sendIntPacket(0xA0,&t);
+            }
             break;
         case 9:
-            if (rec.yprt[3]<1060) {
-                (*v3)-=adj2; (*v3)-=adj2; checkPIDs(); sendPIDs();
-            } 
+            if (rec.yprt[3]<1060 && !alt_hold) {
+                (*v3)-=adj2; (*v4)-=adj2; checkPIDs(); sendPIDs();
+            } else {
+                int t = -adj4;
+                spi_sendIntPacket(0xA0,&t);
+            }
             break;
         case 0:
             if (rec.yprt[3]<1060) {flog_save(); config_save(); sync(); fflush(NULL);}
@@ -138,37 +142,33 @@ void do_adjustments() {
                 ret=config_open("/var/local/rpicopter.config");
                 delay_ms(1000);
                 mode = 0;
+                alt_hold = 0;
+                throttle_hold = 0;
                 sendConfig();
                 bs_reset();
             }
             break;
         case 12:
-            if (gentle) gentle = 0;
-            else gentle = 1;
-
-            if (gentle) {
-                config.rec[1] = 25;
-                config.rec[2] = 25;
-            } else {
-                config.rec[1] = 45;
-                config.rec[2] = 45;
-            }
+            if (rec_setting) rec_setting = 0;
+            else rec_setting = 1;
+            rec_setSetting(rec_setting);
             break;
         case 1:
             alt_hold = 0;
+            throttle_hold = 0;
+            spi_sendIntPacket(0x0F,&alt_hold);
             break;
         case 13:
-            if (constrain) constrain = 0;
-            else constrain = 1;
+            /*
+            if (throttle_hold) throttle_hold=0;
+            else throttle_hold = 1;
+            throttle_target = rec.yprt[3];
+            */
             break;
         case 14:
             if (alt_hold) alt_hold=0;
             else alt_hold = 1;
-            /*
-               alt_target = bs.alt;
-               pid_init(&pid_alt);
-               */
-            alt_target = rec.yprt[3];
+            spi_sendIntPacket(0x0F,&alt_hold);
             break;
         case 4:
             trim[1]+=adj3;
@@ -187,15 +187,16 @@ void do_adjustments() {
             spi_sendIntPacket(22,&trim[2]);
             break;
         case 16:
-            if (rec.yprt[3]<1060) {
+            if (rec.yprt[3]<1060 && !alt_hold) {
                 mode++;
-                if (mode==4) mode=0;
+                if (mode==2) mode=0;
                 spi_sendIntPacket(0x01,&mode);
             }
             break;
         default:
             printf("Unknown command %i\n",rec.aux);
     }
+    if (rec.aux!=-1) printf("Button: %i\n",rec.aux);
     rec.aux=-1; //reset receiver command
 
 } 
@@ -222,11 +223,28 @@ struct timespec *TimeSpecDiff(struct timespec *ts1, struct timespec *ts2)
 }
 
 void log() {
-    flog_push(3,                                                              
+    flog_push(6, 
             (float)t2.tv_sec-ts.tv_sec
-            ,bs.alt,bs.t 
+            ,bs.alt,bs.t
+            ,spi_v[10]/10.0f,spi_v[11]/100.0f,spi_v[12]/100.0f
             );
-    printf("T: %li\tA: %2.1f\tT: %2.1f\n",t2.tv_sec-ts.tv_sec,bs.alt,bs.t);
+#ifdef DEBUG
+    printf("T: %li\tA: %2.1f\tT: %2.1f\t\talt: %2.1f\t\tvz: %2.2f\t\the: %2.1f\n",t2.tv_sec-ts.tv_sec,bs.alt,bs.t,spi_v[10]/10.0f,spi_v[11]/100.0f,spi_v[12]/100.0f);
+#endif
+}
+
+void log_accel() {
+    flog_push(8, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f
+            ,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f
+            );
+#ifdef DEBUG
+   //if (!(c%5)) 
+       printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
+               flight_time,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f);
+#endif
 }
 
 #define MAX_SAFE_STACK (MAX_LOG*MAX_VALS + 64*1024)
@@ -241,11 +259,10 @@ void stack_prefault(void) {
 unsigned long c = 0,k = 0;
 
 void loop() {
+    sendConfig();
+    bs_reset();
     clock_gettime(CLOCK_REALTIME,&t2);                                           
     ts = t1 = t2;
-
-    pid_init(&pid_alt);
-    pid_setmode(&pid_alt,1);
 
     while (1 && !err) {
         ret = rec_update(); 
@@ -257,25 +274,39 @@ void loop() {
             return;
         }
 
+        if (alt_hold && abs(rec.yprt[3]) > (config.rec_t[1]-50)) {
+            alt_hold = 0;
+            throttle_hold = 0;
+            spi_sendIntPacket(0x0F,&alt_hold);
+        }
+        
+
 
         clock_gettime(CLOCK_REALTIME,&t2);                                           
         dt = TimeSpecDiff(&t2,&t1);
         dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 
         //if (ret == 0 && dt_ms<20) continue;
-        if (dt_ms<20) continue;
+        if (dt_ms<15) continue; //4 packets normally take 50ms anyway, so it should not stop in here
         t1 = t2;
+
+        if (alt_hold || rec.yprt[3]>config.rec_t[0]+50)
+            flight_time += dt_ms; 
+
         c++;
-        bs_update(c*20);
-        if (!(c%10)) {
+        bs_update(c*dt_ms);
+        /*
+        if (!(c%5)) {
             log();
-        }
+        }*/
+        log_accel();
+
 
         //will get here every 20ms
         do_adjustments();
 
-        if (alt_hold) {
-            rec.yprt[3] = alt_target;
+        if (throttle_hold) {
+            rec.yprt[3] = throttle_target;
         }
 
         for (int i=0;i<4;i++) {
@@ -338,6 +369,7 @@ int main() {
     delay_ms(100);
     printf("int size: %i\nlong size: %i\nfloat size: %i\nyprt size: %i\n",sizeof(int),sizeof(long),sizeof(float),sizeof(rec.yprt));
     printf("Starting main loop...\n");
+
     loop();
     printf("Closing.\n");
     return 0;

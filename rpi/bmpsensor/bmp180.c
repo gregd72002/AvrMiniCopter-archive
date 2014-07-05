@@ -51,7 +51,7 @@ static struct s_cc {
 
 static int ret = 0;
 
-#define BUF_SIZE 10 
+#define BUF_SIZE 1 
 static long p_buffer[BUF_SIZE];
 static long t_buffer[BUF_SIZE];
 static long *p_buf_ptr = p_buffer;

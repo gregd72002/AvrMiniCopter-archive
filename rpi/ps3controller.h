@@ -11,6 +11,7 @@ extern struct s_rec rec;
 int rec_open();
 int rec_update();
 int rec_close();
+void rec_setSetting(int);
 
 #endif
 

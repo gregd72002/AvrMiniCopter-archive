@@ -40,16 +40,15 @@ void pid_update(struct s_pid *pid, float desired, float actual, float dt_s) {
     pid->_KiTerm += (pid->Ki * pid->_err * dt_s);
     if (pid->_KiTerm>pid->max) pid->_KiTerm=pid->max;
     else if (pid->_KiTerm<pid->min) pid->_KiTerm=pid->min;
-/*
     pid->_dInput = actual - pid->_lastInput;
 
     pid->_output = pid->_err*pid->Kp + pid->_KiTerm - pid->_dInput*pid->Kd/dt_s;
-*/
-    pid->_output = pid->_err*pid->Kp + pid->_KiTerm;
+    //pid->_output = pid->_err*pid->Kp + pid->_KiTerm;
+
     if (pid->_output>pid->max) pid->_output=pid->max;
     if (pid->_output<pid->min) pid->_output=pid->min;
     
     pid->value = pid->_output;
-    //pid->_lastInput = actual;
+    pid->_lastInput = actual;
 }
 

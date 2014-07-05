@@ -1,5 +1,10 @@
 #include "freeram.h"
 
+union s_crcerr {
+    byte b[2];
+    unsigned int i;
+} crcerr;
+
 #include "mpu.h"
 #include "I2Cdev.h"
 #include <SPI.h>
@@ -7,6 +12,7 @@
 #include "crc8.h"
 #include "pid.h"
 #include <Servo.h>
+#include <EEPROM.h>
 
 int ret;
 Servo myservo[4];
@@ -14,15 +20,55 @@ Servo myservo[4];
 #define SERVO_BL 1
 #define SERVO_FR 2
 #define SERVO_BR 3
+
+#define FL_PIN 6
+#define BL_PIN 5
+#define BR_PIN 3
+#define FR_PIN 9 
+
 #define MOTOR_INIT_US 1000
 #define INFLIGHT_THRESHOLD 1060 //below this we will be writing MOTOR_INIT_US
-#define INTEGRAL_THRESHOLD 1150
+#define INTEGRAL_THRESHOLD 1125
 
 struct s_pid pid_r[3];
 struct s_pid pid_s[3];
+struct s_pid pid_alt, pid_vz;
+
+
+void initMotors() {
+    myservo[SERVO_BR].writeMicroseconds(MOTOR_INIT_US);
+    myservo[SERVO_FL].writeMicroseconds(MOTOR_INIT_US);
+    myservo[SERVO_FR].writeMicroseconds(MOTOR_INIT_US);
+    myservo[SERVO_BL].writeMicroseconds(MOTOR_INIT_US);
+}
+
+void testServo() {
+    for (int i=0;i<4;i++)
+    {
+        myservo[i].writeMicroseconds(1090);
+        delay(3000);
+        myservo[i].writeMicroseconds(MOTOR_INIT_US);
+        delay(2000);
+    }
+}
+
+void testServo1() {
+    for (int i=0;i<4;i++)
+        myservo[i].writeMicroseconds(1080);
+
+    delay(4000);
+    for (int i=0;i<4;i++)
+    {
+        myservo[i].writeMicroseconds(1175);
+    }
+    delay(4000);
+    for (int i=0;i<4;i++)
+        myservo[i].writeMicroseconds(MOTOR_INIT_US);
+}
 
 void setup() {
-    Fastwire::setup(600,0);
+    crcerr.i = 0;
+    Fastwire::setup(400,0);
     //Serial.begin(9600);
 #ifdef DEBUG
     //Serial.begin(38400);
@@ -31,8 +77,7 @@ void setup() {
     SPI.setDataMode(SPI_MODE0);
     pinMode(MISO,OUTPUT);
     SPCR |= _BV(SPE);
-    //SPI.setClockDivider(SPI_CLOCK_DIV4);
-    SPI.attachInterrupt();
+    SPI.attachInterrupt(); //alternatively:SPCR |= _BV(SPIE);
 #ifdef DEBUG
     Serial.print("MPU init: "); Serial.println(ret);
     Serial.print("Free mem: "); Serial.println(freeRam());
@@ -40,19 +85,21 @@ void setup() {
     Serial.print("long size: "); Serial.println(sizeof(long));
     Serial.print("float size: "); Serial.println(sizeof(float));
 #endif
+    myservo[SERVO_FL].attach(FL_PIN);
+    myservo[SERVO_BL].attach(BL_PIN);
+    myservo[SERVO_FR].attach(FR_PIN);
+    myservo[SERVO_BR].attach(BR_PIN);
 
-    myservo[SERVO_FL].attach(3);
-    myservo[SERVO_FL].writeMicroseconds(MOTOR_INIT_US);
-    myservo[SERVO_BL].attach(5);
-    myservo[SERVO_BL].writeMicroseconds(MOTOR_INIT_US);
-    myservo[SERVO_FR].attach(6);
-    myservo[SERVO_FR].writeMicroseconds(MOTOR_INIT_US);
-    myservo[SERVO_BR].attach(9);
-    myservo[SERVO_BR].writeMicroseconds(MOTOR_INIT_US);
-     for (int i=0;i<3;i++) {
+    initMotors();
+
+    //testServo1();
+
+    for (int i=0;i<3;i++) {
         pid_init(&pid_r[i]);
         pid_init(&pid_s[i]);
     }
+    pid_init(&pid_alt);
+    pid_init(&pid_vz);
 }
 
 unsigned char loop_count = 0;
@@ -70,27 +117,40 @@ int fly_mode = 0;
 float yaw_target = 0.0f;
 
 union s_packet {
-    byte b[3];
+    byte b[4];
     struct {
         byte t;
         int v;
+        byte c;
     };
 } packet;
 
 int yprt[4] = {0,0,0,0};
 float trim[3] = {0.f,0.f,0.f}; //0-pitch; 1-roll
+float altitude = 0.0f;
+
+int alt_hold = 0;
+float alt_hold_altitude = 0.0f;
+int alt_hold_throttle = 0;
+float smooth_az = 0.0f;
+
+float k_vz = -0.001f;
+float k_h_est = -0.008f;
+float vz_est = 0.f;
+float h_est = 0.f;
 
 unsigned int mpu_err = 0;
 unsigned int rec_err = 0;
 
+
 int process_command() { 
     static unsigned long last_command = millis();
-    if (millis() - last_command>500) {
+    if (millis() - last_command>900) {
 #ifdef DEBUG
         Serial.println("No communication!"); 
 #endif
-        yprt[0]=yprt[1]=yprt[2]=yprt[3]=0;
-//        return 0;
+        alt_hold=yprt[0]=yprt[1]=yprt[2]=yprt[3]=0;
+        //        return 0;
     }
     //each command is 4 byte long: what, value(2), crc - do it till buffer empty
 
@@ -98,78 +158,189 @@ int process_command() {
         last_command = millis();
         //Serial.print("Type: "); Serial.print(packet.t,DEC); Serial.print(" Value: "); Serial.println(packet.v,DEC);
         switch(packet.t) {
-            case 0x01: fly_mode = packet.v; break;
+            case 0x01: fly_mode = packet.v; 
+#ifdef DEBUG
+                       crcerr.b[0]=EEPROM.read(0); crcerr.b[1]=EEPROM.read(1);
+                       Serial.print("EEPROM: "); Serial.println(crcerr.i);
+#else
+                       EEPROM.write(0,crcerr.b[1]); EEPROM.write(1,crcerr.b[0]);
+#endif
+
+                       break;
             case 0x0A: yprt[0] = packet.v; break;
             case 0x0B: yprt[1] = packet.v; break;
             case 0x0C: yprt[2] = packet.v; break;
             case 0x0D: yprt[3] = packet.v; break;
+            case 0x0E: altitude = packet.v/10.f; break;
+            case 0x0F: alt_hold = packet.v; 
+                       alt_hold_throttle = yprt[3]; 
+                       alt_hold_altitude = h_est;
+                       vz_est = 0.f;
+#ifdef DEBUG
+                       Serial.print("Alt hold: "); Serial.println(alt_hold);
+#endif
+                       break;
+            case 0xA0: alt_hold_altitude += packet.v/1000.f; break;
             case 20: trim[0] = (float)packet.v/1000.f; break;
             case 21: trim[1] = (float)packet.v/1000.f; break;
             case 22: trim[2] = (float)packet.v/1000.f; break;
+
+            case 80: pid_alt.min = packet.v; break; 
+            case 81: pid_alt.max = packet.v; break; 
+            case 82: pid_alt.Kp = (float)packet.v/10.f; break; 
+            case 83: pid_alt.Ki = (float)packet.v/10.f; break; 
+            case 84: pid_alt.Kd = (float)packet.v/10.f; break; 
+            case 90: pid_vz.min = packet.v; break; 
+            case 91: pid_vz.max = packet.v; break; 
+            case 92: pid_vz.Kp = (float)packet.v/10.f; break; 
+            case 93: pid_vz.Ki = (float)packet.v/10.f; break; 
+            case 94: pid_vz.Kd = (float)packet.v/10.f; break; 
 
             case 100: pid_r[0].min = packet.v; break; 
             case 101: pid_r[0].max = packet.v; break; 
             case 102: pid_r[0].Kp = (float)packet.v/1000.f; break; 
             case 103: pid_r[0].Ki = (float)packet.v/1000.f; break; 
-            case 104: pid_r[0].Kd = (float)packet.v/1000.f; break; 
+            case 104: pid_r[0].Kd = (float)packet.v/10000.f; break; 
             case 110: pid_r[1].min = packet.v; break; 
             case 111: pid_r[1].max = packet.v; break; 
             case 112: pid_r[1].Kp = (float)packet.v/1000.f; break; 
             case 113: pid_r[1].Ki = (float)packet.v/1000.f; break; 
-            case 114: pid_r[1].Kd = (float)packet.v/1000.f; break; 
+            case 114: pid_r[1].Kd = (float)packet.v/10000.f; break; 
             case 120: pid_r[2].min = packet.v; break; 
             case 121: pid_r[2].max = packet.v; break; 
             case 122: pid_r[2].Kp = (float)packet.v/1000.f; break; 
             case 123: pid_r[2].Ki = (float)packet.v/1000.f; break; 
-            case 124: pid_r[2].Kd = (float)packet.v/1000.f; break; 
+            case 124: pid_r[2].Kd = (float)packet.v/10000.f; break; 
 
             case 200: pid_s[0].min = packet.v; break; 
             case 201: pid_s[0].max = packet.v; break; 
             case 202: pid_s[0].Kp = (float)packet.v/1000.f; break; 
             case 203: pid_s[0].Ki = (float)packet.v/1000.f; break; 
-            case 204: pid_s[0].Kd = (float)packet.v/1000.f; break; 
+            case 204: pid_s[0].Kd = (float)packet.v/10000.f; break; 
             case 210: pid_s[1].min = packet.v; break; 
             case 211: pid_s[1].max = packet.v; break; 
             case 212: pid_s[1].Kp = (float)packet.v/1000.f; break; 
             case 213: pid_s[1].Ki = (float)packet.v/1000.f; break; 
-            case 214: pid_s[1].Kd = (float)packet.v/1000.f; break; 
+            case 214: pid_s[1].Kd = (float)packet.v/10000.f; break; 
             case 220: pid_s[2].min = packet.v; break; 
             case 221: pid_s[2].max = packet.v; break; 
             case 222: pid_s[2].Kp = (float)packet.v/1000.f; break; 
             case 223: pid_s[2].Ki = (float)packet.v/1000.f; break; 
-            case 224: pid_s[2].Kd = (float)packet.v/1000.f; break; 
+            case 224: pid_s[2].Kd = (float)packet.v/10000.f; break; 
 
             default: 
 #ifdef DEBUG
                       Serial.print("Unknown command: "); Serial.println(packet.t);
 #endif
-              return 0;
+                      return 0;
         }
     }
 
     return 0;
 }
 
+void log_altitude() {
+    static union s_packet p;
+    if ((loop_count%20)==0) { //200Hz so 10times a sec... -> every 100ms
+        p.t = 0xA;
+        p.v = alt_hold_altitude*10;
+        SPI_sendBytes(p.b,3);
+        p.t = 0xB;
+        p.v = vz_est*100;
+        SPI_sendBytes(p.b,3);
+        p.t = 0xC;
+        p.v = h_est*100;
+        SPI_sendBytes(p.b,3);
+    }
+}
 
+void log_accel() {
+    static union s_packet p;
+    static float _accelMax[3] = {0.f,0.f,0.f};
+    static float _accelMin[3] = {0.f,0.f,0.f};
+
+    for (int i=0;i<3;i++) {
+        if (mympu.accel[i]<_accelMin[i]) _accelMin[i] = mympu.accel[i];
+        if (mympu.accel[i]>_accelMax[i]) _accelMax[i] = mympu.accel[i];
+    }
+
+    if ((loop_count%20)==0) { //200Hz so 10times a sec... -> every 100ms
+        p.t = 0x20;
+        p.v = _accelMax[0]*1000.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x21;
+        p.v = _accelMax[1]*1000.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x22;
+        p.v = _accelMax[2]*1000.f;
+        SPI_sendBytes(p.b,3);
+
+        _accelMax[0] = 0.f;
+        _accelMax[1] = 0.f;
+        _accelMax[2] = 0.f;
+    }
+    else if ((loop_count%20)==10) { //200Hz so 10times a sec... -> every 100ms
+        p.t = 0x30;
+        p.v = _accelMin[0]*1000.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x31;
+        p.v = _accelMin[1]*1000.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x32;
+        p.v = _accelMin[2]*1000.f;
+        SPI_sendBytes(p.b,3);
+
+        _accelMin[0] = 0.f;
+        _accelMin[1] = 0.f;
+        _accelMin[2] = 0.f;
+    }
+}
+
+int m_fl,m_bl,m_fr,m_br;
 void log() {
+
+    log_accel();
+
 #ifdef DEBUG
-    if (!(loop_count%100)) {
-        Serial.print(np); Serial.print(" OK: "); Serial.print(c); Serial.print(" C:"); Serial.print(err_c); Serial.print(" O:"); Serial.print(err_o);
+    if (!(loop_count%25)) {
+        /*
+           Serial.print(np); Serial.print(" OK: "); Serial.print(c); Serial.print(" C:"); Serial.print(err_c); Serial.print(" O:"); Serial.print(err_o);
+         */
+        //Serial.print(yaw_target-mympu.ypr[0]);
+        //Serial.print(mympu.ypr[0]);
+        /*
+           Serial.print("\t"); Serial.print(yprt[1]-mympu.ypr[1]);
+           Serial.print("\t"); Serial.print(yprt[2]-mympu.ypr[2]);
+           Serial.print("\t"); Serial.print(pid_s[0].value);
+           Serial.print("\t"); Serial.print(pid_s[1].value);
+           Serial.print("\t"); Serial.print(pid_s[2].value);
+           Serial.print("\t"); Serial.print(pid_r[0].value);
+           Serial.print("\t"); Serial.print(pid_r[1].value);
+           Serial.print("\t"); Serial.print(pid_r[2].value);
+           Serial.print("\t"); Serial.print(m_fl);
+           Serial.print("\t"); Serial.print(m_bl);
+           Serial.print("\t"); Serial.print(m_fr);
+           Serial.print("\t"); Serial.print(m_br);
+         */
 
-        Serial.print(" YT: "); Serial.print(yaw_target);
-        Serial.print(" Y: "); Serial.print(mympu.ypr[0]);
-        Serial.print(" P: "); Serial.print(mympu.ypr[1]);
-        Serial.print(" R: "); Serial.print(mympu.ypr[2]);
-
-        Serial.print("\tgy: "); Serial.print(mympu.gyro[0]);
-        Serial.print(" gp: "); Serial.print(mympu.gyro[1]);
-        Serial.print(" gr: "); Serial.print(mympu.gyro[2]);
-
-        Serial.print("\try: "); Serial.print(yprt[0]);
-        Serial.print(" rp: "); Serial.print(yprt[1]);
-        Serial.print(" rr: "); Serial.print(yprt[2]);
-        Serial.print(" rt: "); Serial.print(yprt[3]);
-
+        Serial.print("\talt: "); Serial.print(altitude);
+        Serial.print("  \tsz: "); Serial.print((int)(smooth_az*250));
+        Serial.print("\tvz_est: "); Serial.print(vz_est);
+        Serial.print("\th_est: "); Serial.print(h_est);
+        Serial.print("\tpa: "); Serial.print(pid_alt.value);
+        //Serial.print("\tpv: "); Serial.print(pid_vz.value);
+        Serial.print("\t"); Serial.print(pid_alt.Kp);
+        /*
+           Serial.print("\tc0: "); Serial.print(mympu.comp[0]);
+           Serial.print("\tc1: "); Serial.print(mympu.comp[1]);
+           Serial.print("\tc2: "); Serial.print(mympu.comp[2]);
+         */
+        /*
+           Serial.print("\try: "); Serial.print(yprt[0]);
+           Serial.print(" rp: "); Serial.print(yprt[1]);
+           Serial.print(" rr: "); Serial.print(yprt[2]);
+           Serial.print(" rt: "); Serial.print(yprt[3]);
+         */
         Serial.println();
     }
 #endif
@@ -186,6 +357,12 @@ void controller_loop() {
         myservo[SERVO_FR].writeMicroseconds(MOTOR_INIT_US);
         myservo[SERVO_BR].writeMicroseconds(MOTOR_INIT_US);
         return;
+    }
+    ret = mympu_update_compass();
+    if (ret < 0) {
+#ifdef DEBUG
+        Serial.print("Error reading compass: "); Serial.println(ret);
+#endif
     }
     ret = mympu_update();
     if (ret < 0) {
@@ -204,9 +381,28 @@ void controller_loop() {
         case 3: err_c++; return;
     }
 
-    loop_count++;
 #endif
-    
+    loop_count++;
+
+    //altitude hold
+    int _a = mympu.accel[2]*250;
+    smooth_az = 0.95f * smooth_az + 0.05f * (float)_a/250.f;
+    vz_est = vz_est - smooth_az*loop_s;
+    if (vz_est>0.5f) vz_est = 0.5f;
+    else if (vz_est<-0.5f) vz_est = -0.5f;
+
+    h_est = h_est + vz_est*loop_s;
+
+    vz_est = vz_est + k_vz*(h_est - altitude);
+    h_est = h_est + k_h_est*(h_est - altitude);
+
+    pid_update(&pid_alt,alt_hold_altitude,h_est,loop_s);
+    //pid_update(&pid_vz,0.f,vz_est,loop_s);
+
+    if (alt_hold) {
+        yprt[3] = alt_hold_throttle + pid_alt.value;// - pid_vz.value; 
+    } 
+
     if (yprt[3]<INTEGRAL_THRESHOLD) { //use integral part only if there is some throttle
         yaw_target = mympu.ypr[0];
         for (int i=0;i<3;i++) {                                              
@@ -215,63 +411,99 @@ void controller_loop() {
         }                                                                    
     }       
 
+    /*
+       mympu.ypr[0] = 30;
+       mympu.ypr[1] = 50;
+       mympu.ypr[2] = 0;
+     */
     if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
     if (yaw_target-mympu.ypr[0]>180.0f) yaw_target*=-1;     
 
     //do STAB PID                                                            
     loop_s = (float)(millis() - p_millis)/1000.0f;
     p_millis = millis();
-    for (int i=0;i<3;i++) {                                                  
-        if (i==0) //keep yaw_target                                          
-            pid_update(&pid_s[0],yaw_target,mympu.ypr[0],loop_s);        
-        else 
-            //pid_update(&pid_s[i],0,mympu.ypr[i],loop_s);
-            pid_update(&pid_s[i],yprt[i]+trim[i],mympu.ypr[i],loop_s);
-    }      
 
+    if (abs(mympu.ypr[2])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
+    if (abs(mympu.ypr[1])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
+    if (abs(mympu.ypr[1])>50.f) yprt[2] = mympu.ypr[2]; //disable roll when pitching
+    //if (p_err-r_err<10.f) 
+    //if (abs(mympu.ypr[1])>65) yprt[2] = mympu.ypr[2]; //disable roll when pitching
+    //if (abs(mympu.ypr[2])>10.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
+    //if (abs(mympu.ypr[1])>10.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
+    //flip recovery start
+    //flip recovery end
 
-    //yaw requests will be fed directly to rate pid                          
-    if (abs(yprt[0])>7) {                                             
-        pid_s[0].value = yprt[0];                                 
-        yaw_target = mympu.ypr[0];                                              
-    }                                                                        
+    if (fly_mode == 0) {
 
-    if (fly_mode == 1) { //yaw setup                                             
-        pid_s[0].value = 0.0f;                                        
-        pid_s[1].value = mympu.gyro[1];                                  
-        pid_s[2].value = mympu.gyro[2];                                  
-    } else if (fly_mode == 2) { //pitch setup                                    
-        pid_s[0].value = mympu.gyro[0];                                  
-        pid_s[1].value = 0.0f;                                        
-        pid_s[2].value = mympu.gyro[2];                                  
-    } else if (fly_mode == 3) { //roll setup                                     
-        pid_s[0].value = mympu.gyro[0];                                  
-        pid_s[1].value = mympu.gyro[1];                                  
-        pid_s[2].value = 0.0f;                                        
-    }                                                                        
+        for (int i=0;i<3;i++) {                                                  
+            if (i==0) //keep yaw_target                                          
+                pid_update(&pid_s[0],yaw_target,mympu.ypr[0],loop_s);        
+            else 
+                //pid_update(&pid_s[i],0,mympu.ypr[i],loop_s);
+                pid_update(&pid_s[i],yprt[i]+trim[i],mympu.ypr[i],loop_s);
+        }
+
+        //yaw requests will be fed directly to rate pid                          
+        if (abs(yprt[0])>10) {                                             
+            pid_s[0].value = yprt[0];                                 
+            yaw_target = mympu.ypr[0];                                              
+        }                                                                       
+    } else if (fly_mode == 1) {
+        for (int i=0;i<3;i++) {                                                  
+            if (i==0) //keep yaw_target                                          
+                pid_update(&pid_s[0],yprt[0],0.f,loop_s);        
+            else 
+                //pid_update(&pid_s[i],0,mympu.ypr[i],loop_s);
+                pid_update(&pid_s[i],yprt[i],0.f,loop_s);
+        }
+    } 
 
     //do RATE PID                                                            
     for (int i=0;i<3;i++) {                                                  
         pid_update(&pid_r[i],pid_s[i].value,mympu.gyro[i],loop_s);
     }                                                                        
 
-#ifdef DEBUG
+
+
+    //pid_r[0].value = 0.f;
     log();
-#endif
 
     if (yprt[3] < INFLIGHT_THRESHOLD) {
-            myservo[SERVO_FL].writeMicroseconds(MOTOR_INIT_US);
-            myservo[SERVO_BL].writeMicroseconds(MOTOR_INIT_US);
-            myservo[SERVO_FR].writeMicroseconds(MOTOR_INIT_US);
-            myservo[SERVO_BR].writeMicroseconds(MOTOR_INIT_US);
-            return;
+        myservo[SERVO_FL].writeMicroseconds(MOTOR_INIT_US);
+        myservo[SERVO_BR].writeMicroseconds(MOTOR_INIT_US);
+        myservo[SERVO_FR].writeMicroseconds(MOTOR_INIT_US);
+        myservo[SERVO_BL].writeMicroseconds(MOTOR_INIT_US);
+        return;
     }
 
-    //calculate motor speeds                                                 
-    myservo[SERVO_FL].writeMicroseconds(yprt[3]-pid_r[2].value-pid_r[1].value+pid_r[0].value);
-    myservo[SERVO_BL].writeMicroseconds(yprt[3]-pid_r[2].value+pid_r[1].value-pid_r[0].value);
-    myservo[SERVO_FR].writeMicroseconds(yprt[3]+pid_r[2].value-pid_r[1].value-pid_r[0].value);
-    myservo[SERVO_BR].writeMicroseconds(yprt[3]+pid_r[2].value+pid_r[1].value+pid_r[0].value);
+    /*
+       union s_packet p;
+       p.t = 1;
+       p.v = yprt[3];
+       SPI_sendBytes(p.b,3);
+     */
+
+    //calculate motor speeds                                        
+    m_fl = yprt[3]-pid_r[2].value-pid_r[1].value+pid_r[0].value;
+    m_bl = yprt[3]-pid_r[2].value+pid_r[1].value-pid_r[0].value;
+    m_fr = yprt[3]+pid_r[2].value-pid_r[1].value-pid_r[0].value;
+    m_br = yprt[3]+pid_r[2].value+pid_r[1].value+pid_r[0].value;
+
+    m_fl = m_fl<1080?1080:m_fl;
+    m_bl = m_bl<1080?1080:m_bl;
+    m_fr = m_fr<1080?1080:m_fr;
+    m_br = m_br<1080?1080:m_br;
+
+    myservo[SERVO_FL].writeMicroseconds(m_fl);
+    myservo[SERVO_BL].writeMicroseconds(m_bl);
+    myservo[SERVO_BR].writeMicroseconds(m_br);
+    myservo[SERVO_FR].writeMicroseconds(m_fr);
+    /*
+       myservo[SERVO_FL].writeMicroseconds(yprt[3]-pid_r[2].value-pid_r[1].value+pid_r[0].value);
+       myservo[SERVO_BL].writeMicroseconds(yprt[3]-pid_r[2].value+pid_r[1].value-pid_r[0].value);
+       myservo[SERVO_FR].writeMicroseconds(yprt[3]+pid_r[2].value-pid_r[1].value-pid_r[0].value);
+       myservo[SERVO_BR].writeMicroseconds(yprt[3]+pid_r[2].value+pid_r[1].value+pid_r[0].value);
+     */
 }
 
 int check_init() {
@@ -284,25 +516,45 @@ int check_init() {
         if (pid_s[i].Kp==0) return -1;
     }
 
+    if (pid_alt.min==0) return -1;
+    if (pid_alt.max==0) return -1;
+    if (pid_alt.Kp==0) return -1;
+
     for (int i=0;i<3;i++) {                                                      
-         pid_setmode(&pid_r[i],1);                                         
-         pid_setmode(&pid_s[i],1);                                         
+        pid_setmode(&pid_r[i],1);                                         
+        pid_setmode(&pid_s[i],1);                                         
     } 
+
+    pid_setmode(&pid_alt,1);                                         
+
+#ifdef DEBUG
+    Serial.println("Configuration received.");
+#endif
 
     return 0;
 }
 
 int gyroCal() {
+    static float accel = 0.0f;
+    static unsigned int c = 0;
     ret = mympu_update();
     if (ret!=0) {
+#ifdef DEBUG
+        Serial.print("MPU error! "); Serial.println(ret);
+#endif
         return -1;
     }
+
+    if (c<1000) {
+        if (c>=100) accel += mympu.accel[2];
+        c++;
+    }
     if (mympu.gyro[0]>-1.0f && mympu.gyro[1]>-1.0f && mympu.gyro[2]>-1.0f &&    
-         mympu.gyro[0]<1.0f && mympu.gyro[1]<1.0f && mympu.gyro[2]<1.0f) {
+            mympu.gyro[0]<1.0f && mympu.gyro[1]<1.0f && mympu.gyro[2]<1.0f) {
 #ifdef DEBUG
-    Serial.println("Gyro calibration ok.");
+        Serial.println("Gyro calibration ok.");
 #endif
-        
+        mympu.gravity = accel / (c-100);
         return 0;
     }
     return -1;
@@ -317,16 +569,17 @@ void loop() {
             break;
         case 1: 
             ret = mympu_open(200);
+            delay(150);
             if (ret == 0) mode = 2;
-        break;
+            break;
 
         case 2:
             if (gyroCal()==0) mode = 3;
-        break;
+            break;
 
         case 3:
             controller_loop();
-        break;
+            break;
     }
 }
 

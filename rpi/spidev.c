@@ -34,61 +34,27 @@ static uint16_t delay = 100;
 static int ret;
 static int fd;
 
-union s_packet {
-    uint8_t b[4];
-    struct {
-        uint8_t t;
-        int16_t i;
-        uint8_t c;
-    };
-} ibuf[64];
+int spi_v[256];
 
-unsigned int ibuf_size = 0;
+void _spi_addByte(uint8_t b) {
+    static uint8_t buf[4];
+    static int p = 0;
 
-int spi_transferPacket(union s_packet *packet) {
-    union s_packet buf;
-    
-    buf.b[0] = 0;
-    packet->c = CRC8((unsigned char*)(packet->b),3);
-    struct spi_ioc_transfer tr[4];
-    for (int i=0;i<4;i++) {
-        tr[i].tx_buf = (unsigned long)(packet->b+i);
-        tr[i].rx_buf = (unsigned long)(buf.b+i);
-        tr[i].len = 1; //sizeof(*(packet->b+i));
-        tr[i].speed_hz = speed;
-        tr[i].delay_usecs = delay;
-        tr[i].bits_per_word = bits;
-        tr[i].cs_change = 0;
-    };
+    buf[p++] = b;
 
-    ret = ioctl(fd, SPI_IOC_MESSAGE(4), &tr);
-    if (ret<0) {
-        perror("Error transmitting spi data \n");
+    if (p==4) {
+        int16_t v = 0;
+        v = buf[2] << 8 | buf [1]; 
+        //uint8_t c = CRC8(buf,3);
+        if (CRC8(buf,3) == buf[3]) {
+            spi_v[buf[0]] = v;
+        }
+        p = 0;
     }
-
-    //transfer correct obuf packets into a seperate buffer to be read by getPacket..
-    if (buf.t != 0) {
-        int v = 0;
-        unsigned char b = buf.b[2];
-        buf.b[2] = buf.b[1];
-        buf.b[1] = b;
-        v = buf.i; 
-        int8_t c = CRC8(buf.b,3);
-        //v = (*(obuf+2)) << 8 | (*(obuf+1));
-        printf("Received t: %i, v: %i, gCRC: %i, mCRC: %i, OK=%i\n",buf.t,v,buf.c,c,buf.c==c);
-    }
-
-    usleep(5000);
-
-//    fflush(NULL);
-//    sync();
-
-    return ret;
 }
 
 int spi_writeBytes(uint8_t *data, unsigned int len) {
-    union s_packet buf;
-    buf.b[0] = 0;
+    static int np =0;
     uint8_t dummy[4];
     data[len] = CRC8((unsigned char*)(data),len);
     len++;
@@ -109,26 +75,14 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
         perror("Error transmitting spi data \n");
     }
 
-    if (dummy[0] != 0) {
-        int v = 0;
-        v = dummy[2] << 8 | dummy[1]; 
-        int8_t c = CRC8(dummy,3);
-        //v = (*(obuf+2)) << 8 | (*(obuf+1));
-        printf("Received t: %i, v: %i, gCRC: %i, mCRC: %i, OK=%i\n",dummy[0],v,dummy[3],c,dummy[3]==c);
+    for (int i=0;i<len;i++) {
+        if (!np && dummy[i]!=0) np++;
+        else if (np) np++;
+        if (np) _spi_addByte(dummy[i]);
+        if (np==4) np = 0;
     }
-    /*
-    if (buf.t != 0) {
-        int v = 0;
-        v = buf.i; 
-        int8_t c = CRC8(buf.b,3);
-        //v = (*(obuf+2)) << 8 | (*(obuf+1));
-        printf("Received t: %i, v: %i, gCRC: %i, mCRC: %i, OK=%i\n",buf.t,v,buf.c,c,buf.c==c);
-    }*/
 
     usleep(5000);
-
-//    fflush(NULL);
-//    sync();
 
     return ret;
 }
@@ -142,33 +96,12 @@ void spi_sendIntPacket(uint8_t t, int *v) {
     spi_writeBytes(b,3);
 }
 
-
-int spi_writeBytes1(uint8_t *data, unsigned int len) {
-    data[len] = CRC8((unsigned char*)(data),len);
-    len++;
-    struct spi_ioc_transfer tr[1];
-    tr[0].tx_buf = (unsigned long)(data);
-    tr[0].rx_buf = (unsigned long)(data);
-    tr[0].len = len; 
-    tr[0].speed_hz = speed;
-    tr[0].delay_usecs = delay;
-    tr[0].bits_per_word = bits;
-    tr[0].cs_change = NULL;
-
-    ret = ioctl(fd, SPI_IOC_MESSAGE(1), &tr);
-    if (ret<0) {
-        perror("Error transmitting spi data \n");
-    }
-
-    return ret;
-}
-
-
 int spi_close() {
     return close(fd);
 }
 
 int spi_init() {
+    memset(spi_v,0,sizeof(spi_v));
 
     fd = open(device, O_RDWR);
     if (fd < 0)

@@ -30,14 +30,13 @@ int SPI_getByte(byte *b) {
 }                                                                                
 
 void SPI_sendBytes(uint8_t *data, byte len) {
-    static bool firstLoad = 0;
     if (SPI_osize+len>=BUF_SIZE) {
 #ifdef DEBUG
         Serial.println("SPI out buf full!");
         //if you decide to wrap the buffer, will need to change firstLoad to load a new byte into reg
 #endif
         return;
-    } else if (!SPI_osize) firstLoad = 0;
+    } 
     data[len] = CRC8((byte*)data,len);
     len++;
 
@@ -47,26 +46,20 @@ void SPI_sendBytes(uint8_t *data, byte len) {
         if (++SPI_osize > BUF_SIZE) SPI_osize = BUF_SIZE;                          
     }
 
-    if (!firstLoad) {
-        if (SPI_optr<SPI_osize)                                                        
-            SPDR = SPI_obuf[BUF_SIZE - SPI_osize-- + SPI_optr];  
-        else SPDR = SPI_obuf[SPI_optr - SPI_osize--];       
-        firstLoad = 1;
-    }
 }
 
 int SPI_getPacket(byte *b) {
-    byte c;
+    //byte c;
     int j = SPI_isize;
 
     if (j<4) return -1; //type, val(2), crc
 
-    for (int i=0;i<3;i++)
+    for (int i=0;i<4;i++)
         SPI_getByte(b+i);
 
-    SPI_getByte(&c);
+    //SPI_getByte(&c);
 
-    if (CRC8(b,3)!=c) {
+    if (CRC8(b,3)!=b[3]) {
         SPI_resetBuf();
 #ifdef DEBUG
         static unsigned int n = 0;

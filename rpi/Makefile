@@ -1,6 +1,6 @@
 CXX=g++
-CXXFLAGS= -Wall -g -O2
-CXX_OPTS= -Wall -g -O2 
+CXXFLAGS= -Wall -g -O2 -DDEBUG
+CXX_OPTS= -Wall -g -O2 -DDEBUG
 LDFLAGS=-lpthread -pthread
 LD_OPTS=-lpthread -lrt
 
