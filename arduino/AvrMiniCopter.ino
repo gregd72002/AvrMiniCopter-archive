@@ -27,8 +27,8 @@ Servo myservo[4];
 #define FR_PIN 9 
 
 #define MOTOR_INIT_US 1000
-#define INFLIGHT_THRESHOLD 1060 //below this we will be writing MOTOR_INIT_US
-#define INTEGRAL_THRESHOLD 1125
+#define INFLIGHT_THRESHOLD 1065 //below this we will be writing MOTOR_INIT_US
+#define INTEGRAL_THRESHOLD 1100
 
 struct s_pid pid_r[3];
 struct s_pid pid_s[3];
@@ -299,10 +299,11 @@ void log_accel() {
 int m_fl,m_bl,m_fr,m_br;
 void log() {
 
-    log_accel();
+    //log_accel();
 
 #ifdef DEBUG
     if (!(loop_count%25)) {
+        //Serial.print(pid_r[1]._d*10000.f);
         /*
            Serial.print(np); Serial.print(" OK: "); Serial.print(c); Serial.print(" C:"); Serial.print(err_c); Serial.print(" O:"); Serial.print(err_o);
          */
@@ -322,7 +323,7 @@ void log() {
            Serial.print("\t"); Serial.print(m_fr);
            Serial.print("\t"); Serial.print(m_br);
          */
-
+/*
         Serial.print("\talt: "); Serial.print(altitude);
         Serial.print("  \tsz: "); Serial.print((int)(smooth_az*250));
         Serial.print("\tvz_est: "); Serial.print(vz_est);
@@ -330,6 +331,7 @@ void log() {
         Serial.print("\tpa: "); Serial.print(pid_alt.value);
         //Serial.print("\tpv: "); Serial.print(pid_vz.value);
         Serial.print("\t"); Serial.print(pid_alt.Kp);
+*/
         /*
            Serial.print("\tc0: "); Serial.print(mympu.comp[0]);
            Serial.print("\tc1: "); Serial.print(mympu.comp[1]);
