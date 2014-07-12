@@ -229,7 +229,11 @@ void log() {
             ,spi_v[10]/10.0f,spi_v[11]/100.0f,spi_v[12]/100.0f
             );
 #ifdef DEBUG
-    printf("T: %li\tA: %2.1f\tT: %2.1f\t\talt: %2.1f\t\tvz: %2.2f\t\the: %2.1f\n",t2.tv_sec-ts.tv_sec,bs.alt,bs.t,spi_v[10]/10.0f,spi_v[11]/100.0f,spi_v[12]/100.0f);
+    //printf("T: %li\tA: %2.1f\tT: %2.1f\t\talt: %2.1f\t\tvz: %2.2f\t\the: %2.1f\n",t2.tv_sec-ts.tv_sec,bs.alt,bs.t,spi_v[10]/10.0f,spi_v[11]/100.0f,spi_v[12]/100.0f);
+    printf("T: %li\tdp: %2.2f\tdr: %2.2f\t\tdip: %2.1f\tdir: %2.2f\n",
+            t2.tv_sec-ts.tv_sec
+            ,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f,spi_v[0x23]/100.0f
+            );
 #endif
 }
 
@@ -299,7 +303,8 @@ void loop() {
         if (!(c%5)) {
             log();
         }*/
-        log_accel();
+        //log_accel();
+        log();
 
 
         //will get here every 20ms

@@ -5,11 +5,14 @@ struct s_pid {
     int _mode;
     float Kp,Ki,Kd;
     float _KiTerm,_dInput;
-    float min,max;
+    float min,max,imin,imax;
     float _output;
     float value;
     float _err;
-        float _lastInput;
+    float _lastInput,_lastDInput;
+#ifdef DEBUG
+    float _d;
+#endif
 };
 
 int pid_init(struct s_pid *pid);
