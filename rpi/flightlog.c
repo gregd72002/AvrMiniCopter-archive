@@ -1,10 +1,9 @@
 #include "flightlog.h"
 #include <string.h>
 #include <stdio.h>
+#include "config.h"
 
 struct s_flog flog[MAX_LOG];
-
-static int c;
 
 static FILE *f;
 static int buf_overrun;
@@ -14,11 +13,12 @@ static const char *_path;
 static struct s_flog *ptr;
 
 int flog_reset() {
-	sprintf(p,"%s/flight-%i.log\0",_path,c);
-	c++;
+	sprintf(p,"%s/flight-%i.log\0",_path,config.log_seq);
+	config.log_seq++;
 	ptr = flog;
 	buf_overrun = 0;
 	m_val = 0;
+/*
 	f = fopen(p,"w");
 	if (f == NULL) {
 		printf("Error creating flight log file!\n");
@@ -26,6 +26,7 @@ int flog_reset() {
 	}
 	fflush(NULL);
 	fclose(f);
+*/
 	return 0;
 }
 
@@ -61,7 +62,7 @@ int flog_save() {
 	struct s_flog *i;
 	int j;
 	if ((ptr==flog) && !buf_overrun) return 0; //nothing to write
-	f = fopen(p,"a+");
+	f = fopen(p,"w");
 	if (f == NULL) {
 		printf("Error opening flight log file!\n");
                 return -1;

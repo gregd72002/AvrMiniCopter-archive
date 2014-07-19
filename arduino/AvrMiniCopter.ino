@@ -21,10 +21,10 @@ Servo myservo[4];
 #define SERVO_FR 2
 #define SERVO_BR 3
 
-#define FL_PIN 6
-#define BL_PIN 5
-#define BR_PIN 3
-#define FR_PIN 9 
+#define FL_PIN 5
+#define BL_PIN 9
+#define FR_PIN 3
+#define BR_PIN 6
 
 #define MOTOR_INIT_US 1000
 #define INFLIGHT_THRESHOLD 1065 //below this we will be writing MOTOR_INIT_US
@@ -92,8 +92,11 @@ void setup() {
 
     initMotors();
 
-    //testServo1();
-
+/*
+    delay(3000);
+    testServo1();
+    testServo();
+*/
     for (int i=0;i<3;i++) {
         pid_init(&pid_r[i]);
         pid_init(&pid_s[i]);
@@ -108,11 +111,14 @@ unsigned int np = 0; //cumulative number of MPU/DMP reads that brought no packet
 unsigned int err_c = 0; //cumulative number of MPU/DMP reads that brought corrupted packet
 unsigned int err_o = 0; //cumulative number of MPU/DMP reads that had overflow bit set
 
+
 unsigned char armed = 0;
 unsigned char emergency = 0;
 unsigned char inflight = 0;
+int config_count = 1; //when 0 this means config has been received
 int mode = 0;
 int fly_mode = 0;
+int log_mode = 0;
 
 float yaw_target = 0.0f;
 
@@ -156,15 +162,13 @@ int process_command() {
 
     if (SPI_getPacket(packet.b)==0) {
         last_command = millis();
-        //Serial.print("Type: "); Serial.print(packet.t,DEC); Serial.print(" Value: "); Serial.println(packet.v,DEC);
         switch(packet.t) {
-            case 0x01: fly_mode = packet.v; 
-#ifdef DEBUG
-                       crcerr.b[0]=EEPROM.read(0); crcerr.b[1]=EEPROM.read(1);
-                       Serial.print("EEPROM: "); Serial.println(crcerr.i);
-#else
-                       EEPROM.write(0,crcerr.b[1]); EEPROM.write(1,crcerr.b[0]);
-#endif
+	    case 0x01: config_count = packet.v; break;
+            case 0x02: log_mode = packet.v; 
+		       config_count--;
+			break;
+            case 0x03: fly_mode = packet.v; 
+		       config_count--;
 
                        break;
             case 0x0A: yprt[0] = packet.v; break;
@@ -185,48 +189,48 @@ int process_command() {
             case 21: trim[1] = (float)packet.v/1000.f; break;
             case 22: trim[2] = (float)packet.v/1000.f; break;
 
-            case 80: pid_alt.min = packet.v; break; 
-            case 81: pid_alt.max = packet.v; break; 
-            case 82: pid_alt.Kp = (float)packet.v/10.f; break; 
-            case 83: pid_alt.Ki = (float)packet.v/10.f; break; 
-            case 84: pid_alt.Kd = (float)packet.v/10.f; break; 
-            case 90: pid_vz.min = packet.v; break; 
-            case 91: pid_vz.max = packet.v; break; 
-            case 92: pid_vz.Kp = (float)packet.v/10.f; break; 
-            case 93: pid_vz.Ki = (float)packet.v/10.f; break; 
-            case 94: pid_vz.Kd = (float)packet.v/10.f; break; 
+            case 80: pid_alt.min = packet.v; config_count--; break; 
+            case 81: pid_alt.max = packet.v; config_count--; break; 
+            case 82: pid_alt.Kp = (float)packet.v/10.f; config_count--; break; 
+            case 83: pid_alt.Ki = (float)packet.v/10.f; config_count--; break; 
+            case 84: pid_alt.Kd = (float)packet.v/10.f; config_count--; break; 
+            case 90: pid_vz.min = packet.v; config_count--; break; 
+            case 91: pid_vz.max = packet.v; config_count--; break; 
+            case 92: pid_vz.Kp = (float)packet.v/10.f; config_count--; break; 
+            case 93: pid_vz.Ki = (float)packet.v/10.f; config_count--; break; 
+            case 94: pid_vz.Kd = (float)packet.v/10.f; config_count--; break; 
 
-            case 100: pid_r[0].min = packet.v; break; 
-            case 101: pid_r[0].max = packet.v; break; 
-            case 102: pid_r[0].Kp = (float)packet.v/1000.f; break; 
-            case 103: pid_r[0].Ki = (float)packet.v/1000.f; break; 
-            case 104: pid_r[0].Kd = (float)packet.v/10000.f; break; 
-            case 110: pid_r[1].min = packet.v; break; 
-            case 111: pid_r[1].max = packet.v; break; 
-            case 112: pid_r[1].Kp = (float)packet.v/1000.f; break; 
-            case 113: pid_r[1].Ki = (float)packet.v/1000.f; break; 
-            case 114: pid_r[1].Kd = (float)packet.v/10000.f; break; 
-            case 120: pid_r[2].min = packet.v; break; 
-            case 121: pid_r[2].max = packet.v; break; 
-            case 122: pid_r[2].Kp = (float)packet.v/1000.f; break; 
-            case 123: pid_r[2].Ki = (float)packet.v/1000.f; break; 
-            case 124: pid_r[2].Kd = (float)packet.v/10000.f; break; 
+            case 100: pid_r[0].min = packet.v; config_count--; break; 
+            case 101: pid_r[0].max = packet.v; config_count--; break; 
+            case 102: pid_r[0].Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 103: pid_r[0].Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 104: pid_r[0].Kd = (float)packet.v/10000.f; config_count--; break; 
+            case 110: pid_r[1].min = packet.v; config_count--; break; 
+            case 111: pid_r[1].max = packet.v; config_count--; break; 
+            case 112: pid_r[1].Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 113: pid_r[1].Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 114: pid_r[1].Kd = (float)packet.v/10000.f; config_count--; break; 
+            case 120: pid_r[2].min = packet.v; config_count--; break; 
+            case 121: pid_r[2].max = packet.v; config_count--; break; 
+            case 122: pid_r[2].Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 123: pid_r[2].Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 124: pid_r[2].Kd = (float)packet.v/10000.f; config_count--; break; 
 
-            case 200: pid_s[0].min = packet.v; break; 
-            case 201: pid_s[0].max = packet.v; break; 
-            case 202: pid_s[0].Kp = (float)packet.v/1000.f; break; 
-            case 203: pid_s[0].Ki = (float)packet.v/1000.f; break; 
-            case 204: pid_s[0].Kd = (float)packet.v/10000.f; break; 
-            case 210: pid_s[1].min = packet.v; break; 
-            case 211: pid_s[1].max = packet.v; break; 
-            case 212: pid_s[1].Kp = (float)packet.v/1000.f; break; 
-            case 213: pid_s[1].Ki = (float)packet.v/1000.f; break; 
-            case 214: pid_s[1].Kd = (float)packet.v/10000.f; break; 
-            case 220: pid_s[2].min = packet.v; break; 
-            case 221: pid_s[2].max = packet.v; break; 
-            case 222: pid_s[2].Kp = (float)packet.v/1000.f; break; 
-            case 223: pid_s[2].Ki = (float)packet.v/1000.f; break; 
-            case 224: pid_s[2].Kd = (float)packet.v/10000.f; break; 
+            case 200: pid_s[0].min = packet.v; config_count--; break; 
+            case 201: pid_s[0].max = packet.v; config_count--; break; 
+            case 202: pid_s[0].Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 203: pid_s[0].Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 204: pid_s[0].Kd = (float)packet.v/10000.f; config_count--; break; 
+            case 210: pid_s[1].min = packet.v; config_count--; break; 
+            case 211: pid_s[1].max = packet.v; config_count--; break; 
+            case 212: pid_s[1].Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 213: pid_s[1].Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 214: pid_s[1].Kd = (float)packet.v/10000.f; config_count--; break; 
+            case 220: pid_s[2].min = packet.v; config_count--; break; 
+            case 221: pid_s[2].max = packet.v; config_count--; break; 
+            case 222: pid_s[2].Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 223: pid_s[2].Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 224: pid_s[2].Kd = (float)packet.v/10000.f; config_count--; break; 
 
             default: 
 #ifdef DEBUG
@@ -299,7 +303,7 @@ void log_accel() {
 int m_fl,m_bl,m_fr,m_br;
 void log() {
 
-    //log_accel();
+    log_accel();
 
 #ifdef DEBUG
     if (!(loop_count%25)) {
@@ -468,7 +472,11 @@ void controller_loop() {
 
 
     //pid_r[0].value = 0.f;
-    log();
+    switch(log_mode) {
+	case 0: break;
+	case 1: log_accel(); break;
+	default: break;
+    };
 
     if (yprt[3] < INFLIGHT_THRESHOLD) {
         myservo[SERVO_FL].writeMicroseconds(MOTOR_INIT_US);
@@ -509,18 +517,7 @@ void controller_loop() {
 }
 
 int check_init() {
-    for (int i=0;i<3;i++) { //as the minimum we need min and max for pid and Kp value
-        if (pid_r[i].min==0) return -1;
-        if (pid_r[i].max==0) return -1;
-        if (pid_r[i].Kp==0) return -1;
-        if (pid_s[i].min==0) return -1;
-        if (pid_s[i].max==0) return -1;
-        if (pid_s[i].Kp==0) return -1;
-    }
-
-    if (pid_alt.min==0) return -1;
-    if (pid_alt.max==0) return -1;
-    if (pid_alt.Kp==0) return -1;
+	if (config_count!=0) return -1;
 
     for (int i=0;i<3;i++) {                                                      
         pid_setmode(&pid_r[i],1);                                         
@@ -542,7 +539,7 @@ int gyroCal() {
     ret = mympu_update();
     if (ret!=0) {
 #ifdef DEBUG
-        Serial.print("MPU error! "); Serial.println(ret);
+        if (ret!=1) { Serial.print("MPU error! "); Serial.println(ret); }
 #endif
         return -1;
     }
@@ -564,11 +561,12 @@ int gyroCal() {
 
 void loop() {
     process_command();
+    if (config_count!=0) return;
 
     switch (mode) {
         case 0:
             if (check_init()==0) mode = 1;
-            break;
+	    break;
         case 1: 
             ret = mympu_open(200);
             delay(150);
@@ -582,6 +580,8 @@ void loop() {
         case 3:
             controller_loop();
             break;
+
+	default: break;
     }
 }
 

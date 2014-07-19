@@ -4,7 +4,7 @@
 #include <SPI.h>
 #include "crc8.h"
 
-#define BUF_SIZE 64
+#define BUF_SIZE 64 
 
 volatile byte SPI_iptr = 0;                                                       
 volatile byte SPI_isize = 0;                                                      
@@ -57,13 +57,11 @@ int SPI_getPacket(byte *b) {
     for (int i=0;i<4;i++)
         SPI_getByte(b+i);
 
-    //SPI_getByte(&c);
-
     if (CRC8(b,3)!=b[3]) {
         SPI_resetBuf();
 #ifdef DEBUG
         static unsigned int n = 0;
-        Serial.print("SPI packet corrupted!! t: "); Serial.print(b[0],DEC); Serial.print(" v: "); Serial.print(*((int*)(b+1)),DEC); Serial.println(n++);
+        Serial.print("SPI packet corrupted!!"); Serial.println(n++);
 #endif
         return -1;
     }
@@ -82,12 +80,14 @@ int16_t SPI_getInt16(int *i) {
 ISR (SPI_STC_vect) {                                                             
     byte c = SPDR;   
     
+//set output byte
     if (SPI_osize) {
         if (SPI_optr<SPI_osize)                                                        
             SPDR = SPI_obuf[BUF_SIZE - SPI_osize-- + SPI_optr];  
         else SPDR = SPI_obuf[SPI_optr - SPI_osize--];                                   
     } else SPDR = 0;
 
+//get input
     if (SPI_iptr >= BUF_SIZE)    
         SPI_iptr = 0;                                                             
 

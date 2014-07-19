@@ -35,7 +35,23 @@ int alt_hold = 0;
 int throttle_hold = 0;
 int throttle_target = 0;
 
-void sendPIDs() {
+void sendTrims() {
+    for (int i=0;i<3;i++)
+        spi_sendIntPacket(20+i,&trim[i]);
+
+}
+
+void sendConfig() {
+
+    int config_count = 38;
+    spi_sendIntPacket(0x01,&config_count);
+
+    spi_sendIntPacket(0x02,&config.log_t);
+
+    spi_sendIntPacket(0x03,&mode);
+
+
+//PIDS
     for (int i=0;i<3;i++) 
         for (int j=0;j<5;j++) {
             spi_sendIntPacket(100+i*10+j,&config.r_pid[i][j]);
@@ -43,19 +59,11 @@ void sendPIDs() {
         }
 
     for (int i=0;i<3;i++) { 
-        printf("Sending pid: %i v: %i",80+i,config.alt_pid[i]);
         spi_sendIntPacket(80+i,&config.alt_pid[i]);
         spi_sendIntPacket(90+i,&config.vz_pid[i]);
     }
-}
+//END PIDS
 
-void sendConfig() {
-    for (int i=0;i<3;i++)
-        spi_sendIntPacket(20+i,&trim[i]);
-
-    sendPIDs();
-
-    spi_sendIntPacket(0x01,&mode);
 }
 
 void checkPIDs() {
@@ -73,63 +81,23 @@ void checkPIDs() {
 void do_adjustments() {
     if (rec.aux<0) return;
 
-    static int adj1; //for Kp
-    static int adj2; //for Ki
     static int adj3 = 500; //for trim
     static int adj4 = 500; //for altitude (mm)
 
-    static int *v1,*v2,*v3,*v4;
-    static int _dummy = 0;
-    static int *dummy = &_dummy;
-
-    if (mode == 0) { //normal - stabilized flight mode
-        adj1 = 100;
-        adj2 = 100;
-        v1 = &config.s_pid[1][2];
-        v2 = &config.s_pid[2][2];
-        v3 = &config.s_pid[1][3];
-        v4 = &config.s_pid[2][3];
-    } else if (mode == 1) { //rate
-        adj1 = 50;
-        adj2 = 50;
-        v1 = &config.r_pid[1][2];
-        v2 = &config.r_pid[2][2];
-        v3 = &config.r_pid[1][3];
-        v4 = &config.r_pid[2][3];
-    } 
-
     switch (rec.aux) {
-        case 10:
-            if (rec.yprt[3]<1060 && !alt_hold) {
-                (*v1)+=adj1; (*v2)+=adj1; checkPIDs(); sendPIDs(); 
-            } else {
-                config.alt_pid[2] += 5;
-                spi_sendIntPacket(82,&config.alt_pid[2]);
-            }
-            break;
-        case 8:
-            if (rec.yprt[3]<1060 && !alt_hold) {
-                (*v1)-=adj1; (*v2)-=adj1; checkPIDs(); sendPIDs(); 
-            } else {
-                config.alt_pid[2] -= 5;
-                spi_sendIntPacket(82,&config.alt_pid[2]);
-            }
-            break;
         case 11:
-            if (rec.yprt[3]<1060 && !alt_hold) {
-                (*v3)+=adj2; (*v4)+=adj2; checkPIDs(); sendPIDs();
-            } else {
-                int t = adj4;
-                spi_sendIntPacket(0xA0,&t);
-            }
+printf("LOG_T: %i\n",config.log_t);
+		    spi_sendIntPacket(0x02,&config.log_t);
+		if (alt_hold) {
+			int t = adj4;
+			spi_sendIntPacket(0xA0,&t);
+		}
             break;
         case 9:
-            if (rec.yprt[3]<1060 && !alt_hold) {
-                (*v3)-=adj2; (*v4)-=adj2; checkPIDs(); sendPIDs();
-            } else {
-                int t = -adj4;
-                spi_sendIntPacket(0xA0,&t);
-            }
+		if (alt_hold) {
+			int t = -adj4;
+			spi_sendIntPacket(0xA0,&t);
+		}
             break;
         case 0:
             if (rec.yprt[3]<1060) {flog_save(); config_save(); sync(); fflush(NULL);}
@@ -145,6 +113,7 @@ void do_adjustments() {
                 alt_hold = 0;
                 throttle_hold = 0;
                 sendConfig();
+                sendTrims();
                 bs_reset();
             }
             break;
@@ -244,11 +213,11 @@ void log_accel() {
             ,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f
             ,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f
             );
-#ifdef DEBUG
-   //if (!(c%5)) 
+}
+
+void print_accel() {
        printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
                flight_time,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f);
-#endif
 }
 
 #define MAX_SAFE_STACK (MAX_LOG*MAX_VALS + 64*1024)
@@ -303,8 +272,17 @@ void loop() {
         if (!(c%5)) {
             log();
         }*/
-        //log_accel();
-        log();
+	switch(config.log_t) {
+		case 0: break;
+		case 1: 
+			log_accel(); 
+#ifdef DEBUG
+			if (!(c%10)) print_accel();
+#endif
+		break;
+		default: break;
+	}
+        //log();
 
 
         //will get here every 20ms

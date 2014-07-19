@@ -208,7 +208,7 @@ int8_t I2Cdev::readBytes(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8
         Serial.print("I2C (0x");
         Serial.print(devAddr, HEX);
         Serial.print(") reading ");
-        Serial.print(length, DEC);
+        Serial.print(length);
         Serial.print(" bytes from 0x");
         Serial.print(regAddr, HEX);
         Serial.print("...");
@@ -308,7 +308,7 @@ int8_t I2Cdev::readBytes(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8
 
     #ifdef I2CDEV_SERIAL_DEBUG
         Serial.print(". Done (");
-        Serial.print(count, DEC);
+        Serial.print(count);
         Serial.println(" read).");
     #endif
 
@@ -328,7 +328,7 @@ int8_t I2Cdev::readWords(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint1
         Serial.print("I2C (0x");
         Serial.print(devAddr, HEX);
         Serial.print(") reading ");
-        Serial.print(length, DEC);
+        Serial.print(length);
         Serial.print(" words from 0x");
         Serial.print(regAddr, HEX);
         Serial.print("...");
@@ -460,7 +460,7 @@ int8_t I2Cdev::readWords(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint1
 
     #ifdef I2CDEV_SERIAL_DEBUG
         Serial.print(". Done (");
-        Serial.print(count, DEC);
+        Serial.print(count);
         Serial.println(" read).");
     #endif
     
@@ -585,7 +585,7 @@ bool I2Cdev::writeBytes(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint8_
         Serial.print("I2C (0x");
         Serial.print(devAddr, HEX);
         Serial.print(") writing ");
-        Serial.print(length, DEC);
+        Serial.print(length);
         Serial.print(" bytes to 0x");
         Serial.print(regAddr, HEX);
         Serial.print("...");
@@ -642,7 +642,7 @@ bool I2Cdev::writeWords(uint8_t devAddr, uint8_t regAddr, uint8_t length, uint16
         Serial.print("I2C (0x");
         Serial.print(devAddr, HEX);
         Serial.print(") writing ");
-        Serial.print(length, DEC);
+        Serial.print(length);
         Serial.print(" words to 0x");
         Serial.print(regAddr, HEX);
         Serial.print("...");

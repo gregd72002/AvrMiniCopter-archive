@@ -2,6 +2,7 @@
 #define QCONFIG_H
 
 struct s_config {
+    int log_seq,log_t;
     int rec_t[2]; //t min, t max
     int rec_ypr[2][3]; //y, p, r
     int s_pid[3][5]; //y,p,r + [min,max,kp,ki,kd]
