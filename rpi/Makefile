@@ -18,13 +18,13 @@ all: controller.o
 		config.o \
 		ps3controller.o \
 		gpio.o \
-		pid.o \
+		mpu.o \
 		flightlog.o \
 		bmpsensor/libbs.a \
 		libs/libi2cdev.a \
 		spidev.o
 
-controller.o: pid.o flightlog.o bmpsensor/libbs.a libs/libi2cdev.a spidev.o config.o gpio.o ps3controller.o 
+controller.o: mpu.o flightlog.o bmpsensor/libbs.a libs/libi2cdev.a spidev.o config.o gpio.o ps3controller.o 
 
 speedcontroller/libspeedcontroller.a:
 	$(MAKE) -C speedcontroller/ 

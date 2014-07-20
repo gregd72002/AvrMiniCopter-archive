@@ -43,6 +43,10 @@ int config_open(const char *path) {
         if (fscanf(f,"\n")<0) state=1;
         for (int j=0;j<5 && !state;j++)
             if (fscanf(f,"%i\t",&config.vz_pid[j])<0) state = 1;
+        if (fscanf(f,"\n")<0) state=1;
+
+        for (int i=0;i<9 && !state;i++)
+            if (fscanf(f,"%i\t",&config.gyro_orient[i])<0) state = 1;
 
         fclose(f);
 
@@ -55,21 +59,21 @@ int config_open(const char *path) {
         //some default values if no config file
 	config.log_seq = 0;
 	config.log_t = 0;
-        config.rec_ypr[0][0] = 110;
+        config.rec_ypr[0][0] = 135;
         config.rec_ypr[0][1] = 30;
         config.rec_ypr[0][2] = 30;
-        config.rec_ypr[1][0] = 110;
+        config.rec_ypr[1][0] = 135;
         config.rec_ypr[1][1] = 45;
         config.rec_ypr[1][2] = 45;
         config.rec_t[0] = 1000;
-        config.rec_t[1] = 1650;
+        config.rec_t[1] = 2000;
         for (int i=0;i<3;i++) {
             for (int j=0;j<5;j++) 
                 config.s_pid[i][j] = config.r_pid[i][j] = 0;
-            config.s_pid[i][0] = -180;
-            config.s_pid[i][1] = 180;
-            config.r_pid[i][0] = -360;
-            config.r_pid[i][1] = 360;
+            config.s_pid[i][0] = -500;
+            config.s_pid[i][1] = 500;
+            config.r_pid[i][0] = -500;
+            config.r_pid[i][1] = 500;
         }
         for (int j=0;j<5;j++) { 
             config.alt_pid[j] = 0;
@@ -77,10 +81,10 @@ int config_open(const char *path) {
         }
 
 
-        config.r_pid[0][2]=2400;  //yaw
-        config.r_pid[1][2]=465;  //pitch
-        config.r_pid[2][2]=465;  //roll
-        config.s_pid[0][2]=9000;  //yaw
+        config.r_pid[0][2]=1300;  //yaw
+        config.r_pid[1][2]=500;  //pitch
+        config.r_pid[2][2]=500;  //roll
+        config.s_pid[0][2]=2500;  //yaw
         config.s_pid[1][2]=2500;  //pitch
         config.s_pid[2][2]=2500;  //roll
 
@@ -89,8 +93,11 @@ int config_open(const char *path) {
         config.vz_pid[0] = -300;
         config.vz_pid[1] = 300;
 
-        config.alt_pid[2] = 400;
-        config.vz_pid[2] = 300;
+        config.alt_pid[2] = 15;
+        config.vz_pid[2] = 0;
+
+        for (int i=0;i<9;i++) config.gyro_orient[i] = 0; 
+	config.gyro_orient[0] = config.gyro_orient[4] = config.gyro_orient[8] = 1;
     }
 
     return 0; 
@@ -132,6 +139,10 @@ int config_save() {
     fprintf(f,"\n");
     for (int j=0;j<5;j++)
         fprintf(f,"%i\t",config.vz_pid[j]);
+
+    fprintf(f,"\n");
+        for (int i=0;i<9;i++)
+            fprintf(f,"%i\t",config.gyro_orient[i]);
 
     fflush(NULL);
 

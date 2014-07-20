@@ -18,7 +18,7 @@
 #include "gpio.h"
 #include "flightlog.h"
 #include "bmpsensor/interface.h"
-#include "pid.h"
+#include "mpu.h"
 
 #define delay_ms(a) usleep(a*1000)
 
@@ -41,6 +41,8 @@ void sendTrims() {
 
 }
 
+
+
 void sendConfig() {
 
     int config_count = 38;
@@ -49,6 +51,9 @@ void sendConfig() {
     spi_sendIntPacket(0x02,&config.log_t);
 
     spi_sendIntPacket(0x03,&mode);
+
+    int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
+    spi_sendIntPacket(0x04,&gyro_orientation);
 
 
 //PIDS
@@ -84,16 +89,29 @@ void do_adjustments() {
     static int adj3 = 500; //for trim
     static int adj4 = 500; //for altitude (mm)
 
+    static unsigned int cam_count = 0;
+    static char str[128];
+
     switch (rec.aux) {
-        case 11:
-printf("LOG_T: %i\n",config.log_t);
+	case 8: //L2
+	    	memset(str, '\0', 128);
+		sprintf(str, "/usr/local/bin/vidsnap.sh %i ", cam_count++);
+		system(str);
+		break;
+	case 10: //L1
+		//take picture
+	    	memset(str, '\0', 128);
+		sprintf(str, "/usr/local/bin/picsnap.sh %i ", cam_count++);
+		system(str);
+		break;
+        case 11: //R1
 		    spi_sendIntPacket(0x02,&config.log_t);
 		if (alt_hold) {
 			int t = adj4;
 			spi_sendIntPacket(0xA0,&t);
 		}
             break;
-        case 9:
+        case 9: //R2
 		if (alt_hold) {
 			int t = -adj4;
 			spi_sendIntPacket(0xA0,&t);
@@ -206,6 +224,20 @@ void log() {
 #endif
 }
 
+void log_gyro() {
+    flog_push(8, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f
+            ,spi_v[0x30]/100.0f,spi_v[0x31]/100.0f,spi_v[0x32]/100.0f
+            );
+}
+
+void print_gyro() {
+       printf("T: %li\tgy: %2.2f\tgp: %2.2f\tgr: %2.2f\tqy: %2.2f\tqp: %2.2f\tqr: %2.2f\n",
+               flight_time,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f,spi_v[0x30]/100.0f,spi_v[0x31]/100.0f,spi_v[0x32]/100.0f);
+}
+
 void log_accel() {
     flog_push(8, 
             (float)t2.tv_sec-ts.tv_sec
@@ -219,6 +251,21 @@ void print_accel() {
        printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
                flight_time,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f);
 }
+
+void log_mylog() {
+    flog_push(5, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f
+            );
+}
+
+void print_mylog() {
+       printf("delta: %2.2f\ts_v: %2.2f\tr_v: %2.2f\n",
+               spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f);
+}
+
+
 
 #define MAX_SAFE_STACK (MAX_LOG*MAX_VALS + 64*1024)
 void stack_prefault(void) {
@@ -268,10 +315,7 @@ void loop() {
 
         c++;
         bs_update(c*dt_ms);
-        /*
-        if (!(c%5)) {
-            log();
-        }*/
+
 	switch(config.log_t) {
 		case 0: break;
 		case 1: 
@@ -280,12 +324,19 @@ void loop() {
 			if (!(c%10)) print_accel();
 #endif
 		break;
+		case 2: 
+			log_gyro(); 
+#ifdef DEBUG
+			print_gyro();
+#endif
+		break;
+		case 99:
+			log_mylog();
+			print_mylog();
+		break;
 		default: break;
 	}
-        //log();
 
-
-        //will get here every 20ms
         do_adjustments();
 
         if (throttle_hold) {
@@ -324,7 +375,7 @@ int main() {
         return -1;
     }
 
-    ret=flog_open("/var/local/");                                                
+    ret=flog_open("/rpicopter/");                                                
     if (ret<0) {                                                                 
         printf("Failed to initiate log! [%s]\n", strerror(err));         
         return -1;                                                               

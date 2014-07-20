@@ -11,7 +11,7 @@ struct s_mympu {
 
 extern struct s_mympu mympu;
 
-int mympu_open(unsigned int rate);
+int mympu_open(unsigned int rate,unsigned short orient);
 int mympu_update();
 int mympu_update_compass();
 

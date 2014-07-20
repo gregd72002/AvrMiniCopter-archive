@@ -119,6 +119,7 @@ int config_count = 1; //when 0 this means config has been received
 int mode = 0;
 int fly_mode = 0;
 int log_mode = 0;
+unsigned short gyro_orientation;
 
 float yaw_target = 0.0f;
 
@@ -169,8 +170,10 @@ int process_command() {
 			break;
             case 0x03: fly_mode = packet.v; 
 		       config_count--;
-
                        break;
+	    case 0x04: 
+			gyro_orientation = packet.v;
+			break;
             case 0x0A: yprt[0] = packet.v; break;
             case 0x0B: yprt[1] = packet.v; break;
             case 0x0C: yprt[2] = packet.v; break;
@@ -299,6 +302,62 @@ void log_accel() {
         _accelMin[2] = 0.f;
     }
 }
+
+void log_mpu() {
+    static union s_packet p;
+    static float gyro[3] = {0.f,0.f,0.f};
+    static float quat[3] = {0.f,0.f,0.f};
+
+    if ((loop_count%20)==0) { //200Hz so 10times a sec... -> every 100ms
+	    for (int i=0;i<3;i++) 
+		gyro[i] = mympu.gyro[i];
+        p.t = 0x20;
+        p.v = gyro[0]*100.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x21;
+        p.v = gyro[1]*100.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x22;
+        p.v = gyro[2]*100.f;
+        SPI_sendBytes(p.b,3);
+    }
+    else if ((loop_count%20)==10) { //200Hz so 10times a sec... -> every 100ms
+	    for (int i=0;i<3;i++) 
+		quat[i] = mympu.ypr[i];
+        p.t = 0x30;
+        p.v = quat[0]*100.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x31;
+        p.v = quat[1]*100.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x32;
+        p.v = quat[2]*100.f;
+        SPI_sendBytes(p.b,3);
+    }
+}
+
+void my_log() {
+    static union s_packet p;
+    static float vA[3] = {0.f,0.f,0.f};
+
+    if ((loop_count%10)==0) { //200Hz -> every 50ms
+	vA[0] = yaw_target-mympu.ypr[0];
+	vA[1] = pid_s[0].value;
+	vA[2] = pid_r[0].value; 
+
+        p.t = 0x20;
+        p.v = vA[0]*100.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x21;
+        p.v = vA[1]*100.f;
+        SPI_sendBytes(p.b,3);
+        p.t = 0x22;
+        p.v = vA[2]*100.f;
+        SPI_sendBytes(p.b,3);
+    }
+}
+
+
 
 int m_fl,m_bl,m_fr,m_br;
 void log() {
@@ -475,6 +534,8 @@ void controller_loop() {
     switch(log_mode) {
 	case 0: break;
 	case 1: log_accel(); break;
+	case 2: log_mpu(); break;
+	case 99: my_log(); break;
 	default: break;
     };
 
@@ -568,7 +629,7 @@ void loop() {
             if (check_init()==0) mode = 1;
 	    break;
         case 1: 
-            ret = mympu_open(200);
+            ret = mympu_open(200,gyro_orientation);
             delay(150);
             if (ret == 0) mode = 2;
             break;

@@ -30,7 +30,7 @@ static unsigned char fifoCount;
 static unsigned int _rate;
 static unsigned int _c;
 
-int mympu_open(unsigned int rate) {
+int mympu_open(unsigned int rate, unsigned short orient) {
     _rate = rate;
     _c = 0;
   	mpu_select_device(0);
@@ -88,20 +88,25 @@ int mympu_open(unsigned int rate) {
 	if (ret) return 80+ret;
 #endif
 
-	ret = dmp_set_fifo_rate(rate);
+	ret = dmp_set_orientation(orient);
 #ifdef MPU_DEBUG
 	if (ret) return 90+ret;
 #endif
 
-	ret = mpu_set_dmp_state(1);
+	ret = dmp_set_fifo_rate(rate);
 #ifdef MPU_DEBUG
 	if (ret) return 100+ret;
+#endif
+
+	ret = mpu_set_dmp_state(1);
+#ifdef MPU_DEBUG
+	if (ret) return 110+ret;
 #endif
 
 	ret = dmp_enable_feature(DMP_FEATURE_6X_LP_QUAT|DMP_FEATURE_SEND_CAL_GYRO|DMP_FEATURE_GYRO_CAL|DMP_FEATURE_SEND_RAW_ACCEL);
 //	ret = dmp_enable_feature(DMP_FEATURE_SEND_CAL_GYRO|DMP_FEATURE_GYRO_CAL);
 #ifdef MPU_DEBUG
-	if (ret) return 110+ret;
+	if (ret) return 120+ret;
 #endif
 
 	return 0;

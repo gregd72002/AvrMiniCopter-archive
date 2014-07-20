@@ -9,6 +9,7 @@ struct s_config {
     int r_pid[3][5];
     int alt_pid[5];
     int vz_pid[5];
+    signed char gyro_orient[9];
 };
 
 extern struct s_config config;
