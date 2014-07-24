@@ -177,7 +177,9 @@ void do_adjustments() {
             if (rec.yprt[3]<1060 && !alt_hold) {
                 mode++;
                 if (mode==2) mode=0;
-                spi_sendIntPacket(0x01,&mode);
+		int t = 1;
+		spi_sendIntPacket(0x01,&t);
+                spi_sendIntPacket(0x03,&mode);
             }
             break;
         default:
@@ -224,6 +226,20 @@ void log() {
 #endif
 }
 
+
+void log_motor() {
+    flog_push(6, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[0x20]/1.f,spi_v[0x21]/1.f,spi_v[0x22]/1.f
+            ,spi_v[0x30]/1.f
+            );
+}
+
+void print_motor() {
+       printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
+               flight_time,spi_v[0x20],spi_v[0x21],spi_v[0x22],spi_v[0x30]);
+}
 void log_gyro() {
     flog_push(8, 
             (float)t2.tv_sec-ts.tv_sec
@@ -328,6 +344,12 @@ void loop() {
 			log_gyro(); 
 #ifdef DEBUG
 			print_gyro();
+#endif
+		break;
+		case 3: 
+			log_motor(); 
+#ifdef DEBUG
+			print_motor();
 #endif
 		break;
 		case 99:

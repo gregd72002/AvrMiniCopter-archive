@@ -22,8 +22,8 @@ Servo myservo[4];
 #define SERVO_BR 3
 
 #define FL_PIN 5
-#define BL_PIN 9
-#define FR_PIN 3
+#define BL_PIN 3
+#define FR_PIN 9
 #define BR_PIN 6
 
 #define MOTOR_INIT_US 1000
@@ -148,6 +148,8 @@ float h_est = 0.f;
 
 unsigned int mpu_err = 0;
 unsigned int rec_err = 0;
+
+int m_fl,m_bl,m_fr,m_br;
 
 
 int process_command() { 
@@ -336,6 +338,31 @@ void log_mpu() {
     }
 }
 
+void log_motor() {
+    static union s_packet p;
+    static float vA[4] = {0.f,0.f,0.f,0.f};
+
+    if ((loop_count%10)==0) { //200Hz -> every 50ms
+	vA[0] = m_fl; 
+	vA[1] = m_bl;
+	vA[2] = m_fr; 
+	vA[3] = m_br; 
+
+        p.t = 0x20;
+        p.v = vA[0];
+        SPI_sendBytes(p.b,3);
+        p.t = 0x21;
+        p.v = vA[1];
+        SPI_sendBytes(p.b,3);
+        p.t = 0x22;
+        p.v = vA[2];
+        SPI_sendBytes(p.b,3);
+        p.t = 0x30;
+        p.v = vA[2];
+        SPI_sendBytes(p.b,3);
+    }
+}
+
 void my_log() {
     static union s_packet p;
     static float vA[3] = {0.f,0.f,0.f};
@@ -359,20 +386,23 @@ void my_log() {
 
 
 
-int m_fl,m_bl,m_fr,m_br;
-void log() {
+void log_debug() {
 
-    log_accel();
-
-#ifdef DEBUG
     if (!(loop_count%25)) {
         //Serial.print(pid_r[1]._d*10000.f);
         /*
            Serial.print(np); Serial.print(" OK: "); Serial.print(c); Serial.print(" C:"); Serial.print(err_c); Serial.print(" O:"); Serial.print(err_o);
          */
-        //Serial.print(yaw_target-mympu.ypr[0]);
-        //Serial.print(mympu.ypr[0]);
-        /*
+
+	   Serial.print("\t"); Serial.print(yaw_target-mympu.ypr[0]);
+	   Serial.print("\t"); Serial.print(mympu.ypr[0]);
+	   Serial.print("\t"); Serial.print(mympu.ypr[1]);
+	   Serial.print("\t"); Serial.print(mympu.ypr[2]);
+	   Serial.print("\t"); Serial.print(mympu.gyro[0]);
+	   Serial.print("\t"); Serial.print(mympu.gyro[1]);
+	   Serial.print("\t"); Serial.print(mympu.gyro[2]);
+
+/*
            Serial.print("\t"); Serial.print(yprt[1]-mympu.ypr[1]);
            Serial.print("\t"); Serial.print(yprt[2]-mympu.ypr[2]);
            Serial.print("\t"); Serial.print(pid_s[0].value);
@@ -385,7 +415,8 @@ void log() {
            Serial.print("\t"); Serial.print(m_bl);
            Serial.print("\t"); Serial.print(m_fr);
            Serial.print("\t"); Serial.print(m_br);
-         */
+           Serial.print("\t"); Serial.print(config_count);
+*/
 /*
         Serial.print("\talt: "); Serial.print(altitude);
         Serial.print("  \tsz: "); Serial.print((int)(smooth_az*250));
@@ -408,7 +439,6 @@ void log() {
          */
         Serial.println();
     }
-#endif
 }
 
 float loop_s = 0.0f;
@@ -449,6 +479,9 @@ void controller_loop() {
 #endif
     loop_count++;
 
+    loop_s = (float)(millis() - p_millis)/1000.0f;
+    p_millis = millis();
+
     //altitude hold
     int _a = mympu.accel[2]*250;
     smooth_az = 0.95f * smooth_az + 0.05f * (float)_a/250.f;
@@ -476,17 +509,10 @@ void controller_loop() {
         }                                                                    
     }       
 
-    /*
-       mympu.ypr[0] = 30;
-       mympu.ypr[1] = 50;
-       mympu.ypr[2] = 0;
-     */
     if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
     if (yaw_target-mympu.ypr[0]>180.0f) yaw_target*=-1;     
 
     //do STAB PID                                                            
-    loop_s = (float)(millis() - p_millis)/1000.0f;
-    p_millis = millis();
 
     if (abs(mympu.ypr[2])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
     if (abs(mympu.ypr[1])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
@@ -515,7 +541,7 @@ void controller_loop() {
         }                                                                       
     } else if (fly_mode == 1) {
         for (int i=0;i<3;i++) {                                                  
-            if (i==0) //keep yaw_target                                          
+            if (i==0)                                          
                 pid_update(&pid_s[0],yprt[0],0.f,loop_s);        
             else 
                 //pid_update(&pid_s[i],0,mympu.ypr[i],loop_s);
@@ -531,13 +557,18 @@ void controller_loop() {
 
 
     //pid_r[0].value = 0.f;
+#ifdef DEBUG
+	log_debug();
+#else
     switch(log_mode) {
 	case 0: break;
 	case 1: log_accel(); break;
 	case 2: log_mpu(); break;
+	case 3: log_motor(); break;
 	case 99: my_log(); break;
 	default: break;
     };
+#endif
 
     if (yprt[3] < INFLIGHT_THRESHOLD) {
         myservo[SERVO_FL].writeMicroseconds(MOTOR_INIT_US);

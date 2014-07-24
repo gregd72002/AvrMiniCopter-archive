@@ -13,7 +13,7 @@ static const char *_path;
 static struct s_flog *ptr;
 
 int flog_reset() {
-	sprintf(p,"%s/flight-%i.log\0",_path,config.log_seq);
+	sprintf(p,"%s/flight-%i.t%i.log\0",_path,config.log_seq,config.log_t);
 	config.log_seq++;
 	ptr = flog;
 	buf_overrun = 0;
