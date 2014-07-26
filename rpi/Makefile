@@ -12,7 +12,7 @@ INSTALL=install
 	$(CXX) -c $(CXXFLAGS) $(CXX_OPTS) $< -o $@ 
 
 
-all: controller.o 
+all: controller.o avrspi.o 
 	$(CXX) $(CXXFLAGS) $(CXX_OPTS) $(LD_OPTS) -o $(PROG) \
 		main.c \
 		config.o \
@@ -23,6 +23,9 @@ all: controller.o
 		bmpsensor/libbs.a \
 		libs/libi2cdev.a \
 		spidev.o
+	$(CXX) $(CXXFLAGS) $(CXX_OPTS) $(LD_OPTS) -o avrspi \
+		avrspi.o
+	
 
 controller.o: mpu.o flightlog.o bmpsensor/libbs.a libs/libi2cdev.a spidev.o config.o gpio.o ps3controller.o 
 

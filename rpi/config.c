@@ -16,7 +16,7 @@ int config_open(const char *path) {
 
 	if (fscanf(f,"%i\t%i\n",&config.log_seq,&config.log_t)<0) state = 1;
 
-	for (int i=0;i<2 && !state;i++) 
+	for (int i=0;i<3 && !state;i++) 
             if (fscanf(f,"%i\t",&config.rec_t[i])<0) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
@@ -47,6 +47,13 @@ int config_open(const char *path) {
 
         for (int i=0;i<9 && !state;i++)
             if (fscanf(f,"%i\t",&config.gyro_orient[i])<0) state = 1;
+        if (fscanf(f,"\n")<0) state=1;
+
+        for (int i=0;i<4 && !state;i++)
+            if (fscanf(f,"%i\t",&config.motor_pin[i])<0) state = 1;
+        if (fscanf(f,"\n")<0) state=1;
+
+        if (fscanf(f,"%i\t",&config.mpu_addr)<0) state = 1;
 
         fclose(f);
 
@@ -67,6 +74,7 @@ int config_open(const char *path) {
         config.rec_ypr[1][2] = 45;
         config.rec_t[0] = 1000;
         config.rec_t[1] = 2000;
+        config.rec_t[2] = 1100;
         for (int i=0;i<3;i++) {
             for (int j=0;j<5;j++) 
                 config.s_pid[i][j] = config.r_pid[i][j] = 0;
@@ -97,7 +105,15 @@ int config_open(const char *path) {
         config.vz_pid[2] = 0;
 
         for (int i=0;i<9;i++) config.gyro_orient[i] = 0; 
+
 	config.gyro_orient[0] = config.gyro_orient[4] = config.gyro_orient[8] = 1;
+
+	config.motor_pin[0] = 3;
+	config.motor_pin[1] = 5;
+	config.motor_pin[2] = 6;
+	config.motor_pin[3] = 9;
+
+	config.mpu_addr = 0;
     }
 
     return 0; 
@@ -112,7 +128,7 @@ int config_save() {
 
 	fprintf(f,"%i\t%i\n",config.log_seq,config.log_t);
 
-    for (int j=0;j<2;j++)
+    for (int j=0;j<3;j++)
         fprintf(f,"%i\t",config.rec_t[j]);
     fprintf(f,"\n");
 
@@ -135,14 +151,22 @@ int config_save() {
     }
     for (int j=0;j<5;j++)
         fprintf(f,"%i\t",config.alt_pid[j]);
-    
     fprintf(f,"\n");
+
     for (int j=0;j<5;j++)
         fprintf(f,"%i\t",config.vz_pid[j]);
-
     fprintf(f,"\n");
-        for (int i=0;i<9;i++)
-            fprintf(f,"%i\t",config.gyro_orient[i]);
+
+	for (int i=0;i<9;i++)
+	    fprintf(f,"%i\t",config.gyro_orient[i]);
+    fprintf(f,"\n");
+
+    for (int i=0;i<4;i++)
+        fprintf(f,"%i\t",config.motor_pin[i]);
+    fprintf(f,"\n");
+
+    fprintf(f,"%i\t",config.mpu_addr);
+
 
     fflush(NULL);
 

@@ -150,17 +150,25 @@ int bs_update(unsigned long t_ms) {
     if (state==0 && (t_ms-dt)>(PRESSURE_DELAY/1000)) {
         dt = t_ms;
         state = 1;
-        if (getPressure(bs.p)<0)
+        if (getPressure(bs.p)<0) {
             printf("error getting pressure\n");
+	    return -1;
+	}
         bs.alt = altitude(bs.p, bs.p0); 
-        if (prepareTemperature()<0)
+        if (prepareTemperature()<0) {
             printf("error setting temp\n");
+	    return -1;
+	}
     }
     if (state == 1 && (t_ms-dt)>(TEMPERATURE_DELAY/1000))  {
-        if (getTemperature(bs.t)<0)
+        if (getTemperature(bs.t)<0) {
             printf("error getting temp\n");
-        if (preparePressure(OVERSAMPLING)<0) 
+	    return -1;
+	}
+        if (preparePressure(OVERSAMPLING)<0) { 
             printf("error setting pressure\n");
+	    return -1;
+	}
         dt = t_ms;
         state = 0;
     }

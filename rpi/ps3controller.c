@@ -55,7 +55,7 @@ int process_jsevent(struct js_event *e) {
 		switch(e->number) {
 			case 0: rec.yprt[0] = map(e->value,-32767,32767,config.rec_ypr[setting][0],-config.rec_ypr[setting][0]); nc=1; break;
 			case 1: rec.yprt[3] = map(e->value,-32767,32767,config.rec_t[1],config.rec_t[1]-2*throttle_threshold); nc=1; break;
-			case 2: rec.yprt[2] = map(e->value,-32767,32767,config.rec_ypr[setting][2],-config.rec_ypr[setting][2]); nc=1; break;
+			case 2: rec.yprt[2] = map(e->value,-32767,32767,-config.rec_ypr[setting][2],config.rec_ypr[setting][2]); nc=1; break;
 			case 3: rec.yprt[1] = map(e->value,-32767,32767,config.rec_ypr[setting][1],-config.rec_ypr[setting][1]); nc=1; break;
 		}
 	}

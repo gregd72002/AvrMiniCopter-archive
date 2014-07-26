@@ -30,10 +30,10 @@ static unsigned char fifoCount;
 static unsigned int _rate;
 static unsigned int _c;
 
-int mympu_open(unsigned int rate, unsigned short orient) {
+int mympu_open(short addr,unsigned int rate, unsigned short orient) {
     _rate = rate;
     _c = 0;
-  	mpu_select_device(0);
+  	mpu_select_device(addr);
    	mpu_init_structures();
 
     mympu.gravity = 0.f;
@@ -209,7 +209,7 @@ int mympu_update() {
 	/* if axis is no centered around 0 but around i.e 90 degree due to mount orientation */
 	/* then do:  mympu.ypr[x] = wrap_180(90.f+rad2deg(mympu.ypr[x])); */
 	mympu.ypr[0] = -rad2deg(mympu.ypr[0]);
-	mympu.ypr[1] = rad2deg(mympu.ypr[1]);
+	mympu.ypr[1] = -rad2deg(mympu.ypr[1]);
 	mympu.ypr[2] = -shift_180(rad2deg(mympu.ypr[2]));
 
     static Quaternion qq;
@@ -229,7 +229,7 @@ int mympu_update() {
 
 	/* need to adjust signs depending on the MPU mount orientation */ 
 	mympu.gyro[0] = (float)gyro[2] / GYRO_SENS;
-	mympu.gyro[1] = -(float)gyro[1] / GYRO_SENS;
+	mympu.gyro[1] = (float)gyro[1] / GYRO_SENS;
 	mympu.gyro[2] = (float)gyro[0] / GYRO_SENS;
 
     _c++;

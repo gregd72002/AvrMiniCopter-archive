@@ -24,6 +24,7 @@
 
 int ret;
 int err = 0;
+int bs_err = 0;
 
 unsigned long flight_time = 0;
 
@@ -45,16 +46,23 @@ void sendTrims() {
 
 void sendConfig() {
 
-    int config_count = 38;
-    spi_sendIntPacket(0x01,&config_count);
+    int config_count = 46;
+    spi_sendIntPacket(1,&config_count);
 
-    spi_sendIntPacket(0x02,&config.log_t);
+    spi_sendIntPacket(2,&config.log_t);
 
-    spi_sendIntPacket(0x03,&mode);
+    spi_sendIntPacket(3,&mode);
 
     int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
-    spi_sendIntPacket(0x04,&gyro_orientation);
+    spi_sendIntPacket(4,&gyro_orientation);
 
+    spi_sendIntPacket(9,&config.mpu_addr);
+
+    spi_sendIntPacket(17,&config.rec_t[0]);
+    spi_sendIntPacket(18,&config.rec_t[2]);
+
+    for (int i=0;i<4;i++) 
+            spi_sendIntPacket(5+i,&config.motor_pin[i]);
 
 //PIDS
     for (int i=0;i<3;i++) 
@@ -105,23 +113,22 @@ void do_adjustments() {
 		system(str);
 		break;
         case 11: //R1
-		    spi_sendIntPacket(0x02,&config.log_t);
 		if (alt_hold) {
 			int t = adj4;
-			spi_sendIntPacket(0xA0,&t);
+			spi_sendIntPacket(16,&t);
 		}
             break;
         case 9: //R2
 		if (alt_hold) {
 			int t = -adj4;
-			spi_sendIntPacket(0xA0,&t);
+			spi_sendIntPacket(16,&t);
 		}
             break;
         case 0:
-            if (rec.yprt[3]<1060) {flog_save(); config_save(); sync(); fflush(NULL);}
+            if (rec.yprt[3]<config.rec_t[2]) {flog_save(); config_save(); sync(); fflush(NULL);}
             break;
         case 3: 
-            if (rec.yprt[3]<1060) {
+            if (rec.yprt[3]<config.rec_t[2]) {
                 ret=linuxgpio_initpin(25);
                 linuxgpio_highpulsepin(25);
                 linuxgpio_close();
@@ -143,7 +150,7 @@ void do_adjustments() {
         case 1:
             alt_hold = 0;
             throttle_hold = 0;
-            spi_sendIntPacket(0x0F,&alt_hold);
+            spi_sendIntPacket(15,&alt_hold);
             break;
         case 13:
             /*
@@ -154,8 +161,8 @@ void do_adjustments() {
             break;
         case 14:
             if (alt_hold) alt_hold=0;
-            else alt_hold = 1;
-            spi_sendIntPacket(0x0F,&alt_hold);
+            else if (!bs_err) alt_hold = 1;
+            spi_sendIntPacket(15,&alt_hold);
             break;
         case 4:
             trim[1]+=adj3;
@@ -174,12 +181,12 @@ void do_adjustments() {
             spi_sendIntPacket(22,&trim[2]);
             break;
         case 16:
-            if (rec.yprt[3]<1060 && !alt_hold) {
+            if (rec.yprt[3]<config.rec_t[2] && !alt_hold) {
                 mode++;
                 if (mode==2) mode=0;
 		int t = 1;
-		spi_sendIntPacket(0x01,&t);
-                spi_sendIntPacket(0x03,&mode);
+		spi_sendIntPacket(1,&t);
+                spi_sendIntPacket(3,&mode);
             }
             break;
         default:
@@ -226,61 +233,75 @@ void log() {
 #endif
 }
 
-
-void log_motor() {
-    flog_push(6, 
-            (float)t2.tv_sec-ts.tv_sec
-            ,(float)flight_time
-            ,spi_v[0x20]/1.f,spi_v[0x21]/1.f,spi_v[0x22]/1.f
-            ,spi_v[0x30]/1.f
-            );
-}
-
-void print_motor() {
-       printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
-               flight_time,spi_v[0x20],spi_v[0x21],spi_v[0x22],spi_v[0x30]);
-}
-void log_gyro() {
-    flog_push(8, 
-            (float)t2.tv_sec-ts.tv_sec
-            ,(float)flight_time
-            ,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f
-            ,spi_v[0x30]/100.0f,spi_v[0x31]/100.0f,spi_v[0x32]/100.0f
-            );
-}
-
-void print_gyro() {
-       printf("T: %li\tgy: %2.2f\tgp: %2.2f\tgr: %2.2f\tqy: %2.2f\tqp: %2.2f\tqr: %2.2f\n",
-               flight_time,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f,spi_v[0x30]/100.0f,spi_v[0x31]/100.0f,spi_v[0x32]/100.0f);
-}
-
-void log_accel() {
-    flog_push(8, 
-            (float)t2.tv_sec-ts.tv_sec
-            ,(float)flight_time
-            ,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f
-            ,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f
-            );
-}
-
-void print_accel() {
-       printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
-               flight_time,spi_v[0x20]/1000.0f,spi_v[0x21]/1000.0f,spi_v[0x22]/1000.0f,spi_v[0x30]/1000.0f,spi_v[0x31]/1000.0f,spi_v[0x32]/1000.0f);
-}
-
-void log_mylog() {
+void log5() {
     flog_push(5, 
             (float)t2.tv_sec-ts.tv_sec
             ,(float)flight_time
-            ,spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f
+            ,spi_v[30]/1.f,spi_v[31]/1.f,spi_v[32]/1.f
             );
 }
 
-void print_mylog() {
-       printf("delta: %2.2f\ts_v: %2.2f\tr_v: %2.2f\n",
-               spi_v[0x20]/100.0f,spi_v[0x21]/100.0f,spi_v[0x22]/100.0f);
+void log5_print() {
+       printf("T: %li\talt: %i\tv_est: %i\th_est: %i\n",
+               flight_time,spi_v[30],spi_v[31],spi_v[32]);
 }
 
+void log3() {
+    flog_push(6, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[10]/1.f,spi_v[11]/1.f,spi_v[12]/1.f
+            ,spi_v[13]/1.f
+            );
+}
+
+void log3_print() {
+       printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
+               flight_time,spi_v[10],spi_v[11],spi_v[12],spi_v[13]);
+}
+void log2() { //gyro & quat
+    flog_push(9, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[1]/100.0f,spi_v[2]/100.0f,spi_v[3]/100.0f
+            ,spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f
+            );
+}
+
+void log2_print() {
+       printf("T: %li\tgy: %2.2f\tgp: %2.2f\tgr: %2.2f\tqy: %2.2f\tqp: %2.2f\tqr: %2.2f\tyt: %2.2f\n",
+               flight_time,spi_v[1]/100.0f,spi_v[2]/100.0f,spi_v[3]/100.0f,spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f);
+}
+
+void log1() {
+    flog_push(8, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[20]/1000.0f,spi_v[21]/1000.0f,spi_v[22]/1000.0f
+            ,spi_v[25]/1000.0f,spi_v[26]/1000.0f,spi_v[27]/1000.0f
+            );
+}
+
+void log1_print() {
+       printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
+               flight_time,spi_v[20]/1000.0f,spi_v[21]/1000.0f,spi_v[22]/1000.0f,spi_v[25]/1000.0f,spi_v[26]/1000.0f,spi_v[27]/1000.0f);
+}
+
+void log4() {
+    flog_push(10, 
+            (float)t2.tv_sec-ts.tv_sec
+            ,(float)flight_time
+            ,spi_v[10]/1.f,spi_v[11]/1.f,spi_v[12]/1.f,spi_v[13]/1.f
+            ,spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f
+            );
+}
+
+void log4_print() {
+       printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\tqy: %f\tqp: %f\tqr: %f\tyt: %f\n",
+               flight_time,spi_v[10],spi_v[11],spi_v[12],spi_v[13],
+		spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f
+	);
+}
 
 
 #define MAX_SAFE_STACK (MAX_LOG*MAX_VALS + 64*1024)
@@ -313,7 +334,7 @@ void loop() {
         if (alt_hold && abs(rec.yprt[3]) > (config.rec_t[1]-50)) {
             alt_hold = 0;
             throttle_hold = 0;
-            spi_sendIntPacket(0x0F,&alt_hold);
+            spi_sendIntPacket(15,&alt_hold);
         }
         
 
@@ -326,35 +347,45 @@ void loop() {
         if (dt_ms<15) continue; //4 packets normally take 50ms anyway, so it should not stop in here
         t1 = t2;
 
-        if (alt_hold || rec.yprt[3]>config.rec_t[0]+50)
+        if (alt_hold || rec.yprt[3]>config.rec_t[2])
             flight_time += dt_ms; 
 
         c++;
-        bs_update(c*dt_ms);
+	if (!bs_err) {
+		static float _a = bs.alt; 
+		bs_err = bs_update(c*dt_ms);
+		if (bs_err) bs.alt = _a;
+	} 
 
 	switch(config.log_t) {
 		case 0: break;
 		case 1: 
-			log_accel(); 
+			log1(); 
 #ifdef DEBUG
-			if (!(c%10)) print_accel();
+			log1_print();
 #endif
 		break;
 		case 2: 
-			log_gyro(); 
+			log2(); 
 #ifdef DEBUG
-			print_gyro();
+			log2_print();
 #endif
 		break;
 		case 3: 
-			log_motor(); 
+			log3(); 
 #ifdef DEBUG
-			print_motor();
+			log3_print();
 #endif
 		break;
-		case 99:
-			log_mylog();
-			print_mylog();
+		case 4:
+			log4();
+#ifdef DEBUG
+			log4_print();
+#endif
+		break;
+		case 5:
+			log5();
+			log5_print();
 		break;
 		default: break;
 	}
@@ -366,10 +397,10 @@ void loop() {
         }
 
         for (int i=0;i<4;i++) {
-            spi_sendIntPacket(0x0A+i,rec.yprt+i);
+            spi_sendIntPacket(10+i,rec.yprt+i);
         }
         int alt = (bs.alt * 10);
-        spi_sendIntPacket(0x0E,&alt);
+        spi_sendIntPacket(14,&alt);
     }
 }
 
@@ -397,7 +428,7 @@ int main() {
         return -1;
     }
 
-    ret=flog_open("/rpicopter/");                                                
+    ret=flog_open("/rpicopter");                                                
     if (ret<0) {                                                                 
         printf("Failed to initiate log! [%s]\n", strerror(err));         
         return -1;                                                               
