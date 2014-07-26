@@ -47,9 +47,11 @@ libs/libi2cdev.a:
 install:
 	$(INSTALL) -m 0755 -d $(DESTDIR)/usr/local/bin
 	$(INSTALL) -m 755 $(PROG) $(DESTDIR)/usr/local/bin/
+	$(INSTALL) -m 755 avrspi $(DESTDIR)/usr/local/bin/
 
 clean:
 	cd bmpsensor && $(MAKE) clean
 	cd libs/i2cdev && $(MAKE) clean
-	rm -rf *.o *~ *.mod
 	rm -rf $(PROG)
+	rm -rf avrspi 
+	rm -rf *.o *~ *.mod
