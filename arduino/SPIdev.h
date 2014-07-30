@@ -71,7 +71,7 @@ int SPI_getPacket(byte *b) {
 
 int16_t SPI_getInt16(int *i) {
     if (SPI_isize<2) return -1;                                                    
-    byte b1,b2;
+    byte b1=0,b2=0;
     SPI_getByte(&b1);
     SPI_getByte(&b2);
     return (int16_t)(b2<<8 | b1);

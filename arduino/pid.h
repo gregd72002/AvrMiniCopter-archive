@@ -5,7 +5,7 @@ struct s_pid {
     int _mode;
     float Kp,Ki,Kd;
     float _KiTerm,_dInput;
-    float min,max,imin,imax;
+    float max,imax;
     float _output;
     float value;
     float _err;

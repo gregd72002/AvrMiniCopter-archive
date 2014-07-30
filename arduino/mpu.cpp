@@ -24,7 +24,9 @@ union u_quat {
 static int ret;
 static short gyro[3];
 static short accel[3];
+#ifdef MPU9150
 static short comp[3];
+#endif
 static short sensors;
 static unsigned char fifoCount;
 static unsigned int _rate;
@@ -155,6 +157,7 @@ static inline float shift_180(float x) {
     return x+180>180?x-180:x+180;
 }
 
+#ifdef MPU9150
 int mympu_update_compass() {
     if (_c <_rate/50) return 1;
 
@@ -169,6 +172,7 @@ int mympu_update_compass() {
 
     return 0;
 }
+#endif
 
 
 int mympu_update() {

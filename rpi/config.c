@@ -45,6 +45,9 @@ int config_open(const char *path) {
             if (fscanf(f,"%i\t",&config.vz_pid[j])<0) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
+        if (fscanf(f,"%i\t",&config.a_pid[0])<0) state = 1;
+        if (fscanf(f,"\n")<0) state=1;
+
         for (int i=0;i<9 && !state;i++)
             if (fscanf(f,"%i\t",&config.gyro_orient[i])<0) state = 1;
         if (fscanf(f,"\n")<0) state=1;
@@ -78,15 +81,17 @@ int config_open(const char *path) {
         for (int i=0;i<3;i++) {
             for (int j=0;j<5;j++) 
                 config.s_pid[i][j] = config.r_pid[i][j] = 0;
-            config.s_pid[i][0] = -500;
-            config.s_pid[i][1] = 500;
-            config.r_pid[i][0] = -500;
-            config.r_pid[i][1] = 500;
+            config.s_pid[i][0] = 500;
+            config.s_pid[i][1] = 50;
+            config.r_pid[i][0] = 500;
+            config.r_pid[i][1] = 50;
         }
         for (int j=0;j<5;j++) { 
             config.alt_pid[j] = 0;
             config.vz_pid[j] = 0;
         }
+
+	config.a_pid[0] = 4000;
 
 
         config.r_pid[0][2]=1300;  //yaw
@@ -96,12 +101,12 @@ int config_open(const char *path) {
         config.s_pid[1][2]=2500;  //pitch
         config.s_pid[2][2]=2500;  //roll
 
-        config.alt_pid[0] = -300;
-        config.alt_pid[1] = 300;
-        config.vz_pid[0] = -300;
-        config.vz_pid[1] = 300;
+        config.alt_pid[0] = 300;
+        config.alt_pid[1] = 30;
+        config.vz_pid[0] = 300;
+        config.vz_pid[1] = 30;
 
-        config.alt_pid[2] = 15;
+        config.alt_pid[2] = 750;
         config.vz_pid[2] = 0;
 
         for (int i=0;i<9;i++) config.gyro_orient[i] = 0; 
@@ -155,6 +160,9 @@ int config_save() {
 
     for (int j=0;j<5;j++)
         fprintf(f,"%i\t",config.vz_pid[j]);
+    fprintf(f,"\n");
+
+    fprintf(f,"%i\t",config.a_pid[0]);
     fprintf(f,"\n");
 
 	for (int i=0;i<9;i++)

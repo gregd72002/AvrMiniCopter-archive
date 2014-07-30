@@ -46,7 +46,7 @@ void sendTrims() {
 
 void sendConfig() {
 
-    int config_count = 46;
+    int config_count = 47;
     spi_sendIntPacket(1,&config_count);
 
     spi_sendIntPacket(2,&config.log_t);
@@ -75,6 +75,8 @@ void sendConfig() {
         spi_sendIntPacket(80+i,&config.alt_pid[i]);
         spi_sendIntPacket(90+i,&config.vz_pid[i]);
     }
+
+	spi_sendIntPacket(130,&config.a_pid[0]);
 //END PIDS
 
 }
@@ -94,7 +96,7 @@ void checkPIDs() {
 void do_adjustments() {
     if (rec.aux<0) return;
 
-    static int adj3 = 500; //for trim
+    static int adj3 = 1; //for trim
     static int adj4 = 500; //for altitude (mm)
 
     static unsigned int cam_count = 0;
@@ -181,13 +183,15 @@ void do_adjustments() {
             spi_sendIntPacket(22,&trim[2]);
             break;
         case 16:
-            if (rec.yprt[3]<config.rec_t[2] && !alt_hold) {
+            //if (rec.yprt[3]<config.rec_t[2] && !alt_hold) {
+{
                 mode++;
                 if (mode==2) mode=0;
 		int t = 1;
 		spi_sendIntPacket(1,&t);
                 spi_sendIntPacket(3,&mode);
-            }
+}
+            //}
             break;
         default:
             printf("Unknown command %i\n",rec.aux);
@@ -288,18 +292,18 @@ void log1_print() {
 }
 
 void log4() {
-    flog_push(10, 
+    flog_push(11, 
             (float)t2.tv_sec-ts.tv_sec
             ,(float)flight_time
             ,spi_v[10]/1.f,spi_v[11]/1.f,spi_v[12]/1.f,spi_v[13]/1.f
-            ,spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f
+            ,spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f,(spi_v[8]-spi_v[5])/100.0f
             );
 }
 
 void log4_print() {
-       printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\tqy: %f\tqp: %f\tqr: %f\tyt: %f\n",
+       printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\tqy: %f\tqp: %f\tqr: %f\tyt: %f\ty: %f\n",
                flight_time,spi_v[10],spi_v[11],spi_v[12],spi_v[13],
-		spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f
+		spi_v[5]/100.0f,spi_v[6]/100.0f,spi_v[7]/100.0f,spi_v[8]/100.0f,(spi_v[8]-spi_v[5])/100.0f
 	);
 }
 

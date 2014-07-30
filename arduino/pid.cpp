@@ -7,9 +7,7 @@ static float _d_lpf_alpha = 0.0f;
 
 int pid_init(struct s_pid *pid) {
     pid->Kp=pid->Ki=pid->Kd=0.0f;
-    pid->max=pid->min=0.0f;
-    pid->imax=50.0f;
-    pid->imin=-50.0f;
+    pid->max=pid->imax=0.0f;
     pid->_output = 0.0f;
     pid->value = 0.0f;
     pid->_err=0.0f;
@@ -27,7 +25,7 @@ int pid_init(struct s_pid *pid) {
 void pid_reset(struct s_pid *pid) {
     pid->_KiTerm = pid->_output;
     if (pid->_KiTerm>pid->imax) pid->_KiTerm=pid->imax;
-    else if (pid->_KiTerm<pid->imin) pid->_KiTerm=pid->imin;
+    else if (pid->_KiTerm<-pid->imax) pid->_KiTerm=-pid->imax;
 }
 
 void pid_setmode(struct s_pid *pid, int mode) {
@@ -48,7 +46,7 @@ void pid_update(struct s_pid *pid, float desired, float actual, float dt_s) {
 
     pid->_KiTerm += (pid->Ki * pid->_err * dt_s);
     if (pid->_KiTerm>pid->imax) pid->_KiTerm=pid->imax;
-    else if (pid->_KiTerm<pid->imin) pid->_KiTerm=pid->imin;
+    else if (pid->_KiTerm<-pid->imax) pid->_KiTerm=-pid->imax;
 
     pid->_dInput = actual - (pid->_lastInput) / dt_s;
     pid->_dInput = pid->_lastDInput + _d_lpf_alpha * (pid->_dInput - pid->_lastDInput);
@@ -56,7 +54,7 @@ void pid_update(struct s_pid *pid, float desired, float actual, float dt_s) {
     pid->_output = pid->_err*pid->Kp + pid->_KiTerm - pid->_dInput*pid->Kd;
 
     if (pid->_output>pid->max) pid->_output=pid->max;
-    if (pid->_output<pid->min) pid->_output=pid->min;
+    if (pid->_output<-pid->max) pid->_output=-pid->max;
     
     pid->value = pid->_output;
     pid->_lastInput = actual;

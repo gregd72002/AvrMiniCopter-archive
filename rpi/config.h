@@ -5,8 +5,9 @@ struct s_config {
     int log_seq,log_t;
     int rec_t[3]; //t min, t_max, t inflight
     int rec_ypr[2][3]; //y, p, r
-    int s_pid[3][5]; //y,p,r + [min,max,kp,ki,kd]
+    int s_pid[3][5]; //y,p,r + [max,imax,kp,ki,kd]
     int r_pid[3][5];
+    int a_pid[1];
     int alt_pid[5];
     int vz_pid[5];
     signed char gyro_orient[9];
