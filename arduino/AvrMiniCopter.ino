@@ -2,6 +2,8 @@
 #include "freeram.h"
 #endif
 
+int crc_err;
+#include <avr/wdt.h>
 #include "mpu.h"
 #include "I2Cdev.h"
 #include <SPI.h>
@@ -16,8 +18,8 @@ Servo myservo[4];
 #define SERVO_BL 1
 #define SERVO_FR 2
 #define SERVO_BR 3
-//int m_fl,m_bl,m_fr,m_br;
-int m[4];
+
+int m[4]; //calculated motor thrust
 byte FL_PIN,BL_PIN,FR_PIN,BR_PIN;
 
 short mpu_addr;
@@ -89,6 +91,12 @@ void initMotors() {
     motor_idle();
 }
 
+void sendPacket(byte t, int v) {
+        packet.t = t;
+        packet.v = v;
+        SPI_sendBytes(packet.b,3);
+}
+
 void setup() {
     Fastwire::setup(400,0);
     //Serial.begin(9600);
@@ -117,6 +125,8 @@ void setup() {
 	mode = 0;
 	fly_mode = 0;
 	log_mode = 0;
+	mpu_addr = 136; //for identity maytix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
+	crc_err = 0;
 }
 
 void motorReattach(int v) {
@@ -235,7 +245,7 @@ int process_command() {
             case 224: pid_s[2].Kd = (float)packet.v/10000.f; config_count--; break; 
 	    case 250:	motorReattach(packet.v); break;
 	    case 251:	motorTest(packet.v); break;
-
+	    case 254: wdt_enable(WDTO_15MS); while (1); break;
             default: 
 #ifdef DEBUG
                       Serial.print("Unknown command: "); Serial.println(packet.t);
@@ -247,19 +257,12 @@ int process_command() {
     return 0;
 }
 
-static union s_packet p;
 
 #ifdef ALTHOLD
 void log_altitude() {
-        p.t = 30;
-        p.v = (int)(alt_hold_altitude*10.f);
-        SPI_sendBytes(p.b,3);
-        p.t = 31;
-        p.v = (int)(vz_est*100.f);
-        SPI_sendBytes(p.b,3);
-        p.t = 32;
-        p.v = (int)(h_est*100.f);
-        SPI_sendBytes(p.b,3);
+	sendPacket(30,alt_hold_altitude*10.f);
+	sendPacket(31,vz_est*100.f);
+	sendPacket(32,h_est*100.f);
 }
 #endif
 
@@ -274,48 +277,33 @@ void log_accel() {
 
     if ((loop_count%20)==0) { //200Hz so 10times a sec... -> every 100ms
 	for (int i=0;i<3;i++) {
-		p.t = 20+i;
-		p.v = (int)(_accelMax[i]*1000.f);
-		SPI_sendBytes(p.b,3);
+		sendPacket(20+i,_accelMax[i]*1000.f);
 		_accelMax[i] = 0.f;
 	}
     }
     else if ((loop_count%20)==10) { //200Hz so 10times a sec... -> every 100ms
 	for (int i=0;i<3;i++) {
-		p.t = 25+i;
-		p.v = (int)(_accelMin[i]*1000.f);
-		SPI_sendBytes(p.b,3);
+		sendPacket(25+i,_accelMin[i]*1000.f);
 		_accelMin[i] = 0.f;
 	}
     }
 }
 
 void log_gyro() {
-	for (int i=0;i<3;i++) {
-        p.t = 1+i;
-        p.v = (int)(mympu.gyro[i]*100.f);
-        SPI_sendBytes(p.b,3);
-	}
+	for (int i=0;i<3;i++)
+		sendPacket(1+i,mympu.gyro[i]*100.f);
 }
 
 void log_quat() {
 
-	for (int i=0;i<3;i++) {
-		p.t = 5+i;
-		p.v = (int)(mympu.ypr[i]*100.f);
-		SPI_sendBytes(p.b,3);
-	}
-        p.t = 8;
-        p.v = (int)(yaw_target*100.f);
-        SPI_sendBytes(p.b,3);
+	for (int i=0;i<3;i++)
+		sendPacket(5+i,mympu.ypr[i]*100.f);
+	sendPacket(8,yaw_target*100.f);
 }
 
 void log_motor() {
-	for (int i=0;i<4;i++) {
-		p.t = 10+i;
-		p.v = m[i];
-		SPI_sendBytes(p.b,3);
-	}
+	for (int i=0;i<4;i++)
+		sendPacket(10+i,m[i]);
 }
 
 
@@ -411,6 +399,13 @@ void log() {
 	break;
 #endif
 
+	case 99:
+	    if ((loop_count%20)==0) //200Hz -> every 50ms
+		log_motor();
+	    else if ((loop_count%20)==10)
+		    sendPacket(254,crc_err);
+	break;
+	
 	default: break;
     };
 #endif
@@ -538,18 +533,10 @@ int check_init() {
 
     initMotors();
 
-    for (int i=0;i<3;i++) {                                                      
-        pid_setmode(&pid_r[i],1);                                         
-        pid_setmode(&pid_s[i],1);                                         
-    } 
-
-#ifdef ALTHOLD
-    pid_setmode(&pid_alt,1);                                         
-#endif
-
 #ifdef DEBUG
     Serial.println("Configuration received.");
 #endif
+
 
     return 0;
 }

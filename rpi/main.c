@@ -54,6 +54,7 @@ void sendConfig() {
     spi_sendIntPacket(3,&mode);
 
     int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
+    printf("%i\n",gyro_orientation);
     spi_sendIntPacket(4,&gyro_orientation);
 
     spi_sendIntPacket(9,&config.mpu_addr);
@@ -390,6 +391,9 @@ void loop() {
 		case 5:
 			log5();
 			log5_print();
+		break;
+		case 99:
+			printf("%i\n",spi_v[254]);
 		break;
 		default: break;
 	}

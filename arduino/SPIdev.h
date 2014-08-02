@@ -23,8 +23,9 @@ int SPI_getByte(byte *b) {
     if (!SPI_isize) return -1;                                                    
 
     if (SPI_iptr<SPI_isize)                                                        
-        (*b) = SPI_ibuf[BUF_SIZE - SPI_isize-- + SPI_iptr];                       
-    else (*b) = SPI_ibuf[SPI_iptr - SPI_isize--];                                   
+        (*b) = SPI_ibuf[BUF_SIZE - SPI_isize + SPI_iptr];                       
+    else (*b) = SPI_ibuf[SPI_iptr - SPI_isize];                                   
+    SPI_isize--;
 
     return 0;                                                                    
 }                                                                                
@@ -58,6 +59,7 @@ int SPI_getPacket(byte *b) {
         SPI_getByte(b+i);
 
     if (CRC8(b,3)!=b[3]) {
+	crc_err++;
         SPI_resetBuf();
 #ifdef DEBUG
         static unsigned int n = 0;
@@ -83,8 +85,9 @@ ISR (SPI_STC_vect) {
 //set output byte
     if (SPI_osize) {
         if (SPI_optr<SPI_osize)                                                        
-            SPDR = SPI_obuf[BUF_SIZE - SPI_osize-- + SPI_optr];  
-        else SPDR = SPI_obuf[SPI_optr - SPI_osize--];                                   
+            SPDR = SPI_obuf[BUF_SIZE - SPI_osize + SPI_optr];  
+        else SPDR = SPI_obuf[SPI_optr - SPI_osize];                                   
+	SPI_osize--;
     } else SPDR = 0;
 
 //get input

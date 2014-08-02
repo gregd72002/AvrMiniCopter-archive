@@ -89,8 +89,7 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
         if (np) _spi_addByte(dummy[i]);
         if (np==4) np = 0;
     }
-
-    usleep(5000);
+ usleep(5000);
 
     return ret;
 }
