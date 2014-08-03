@@ -484,7 +484,7 @@ void controller_loop() {
     if (fly_mode == 0) {
 	
 	//yaw requests will be fed directly to rate pid                          
-	if (abs(yprt[0])>10) {
+	if (abs(yprt[0])>5) {
 	    pid_s[0].value = yprt[0]*pid_acro_p;                                 
 	    yaw_target = mympu.ypr[0];                                              
 	} else pid_update(&pid_s[0],yaw_target,mympu.ypr[0],loop_s);        
