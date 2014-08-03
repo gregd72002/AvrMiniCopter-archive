@@ -14,7 +14,7 @@ int config_open(const char *path) {
 
     if (state ==0) {
 
-	if (fscanf(f,"%i\t%i\n",&config.log_seq,&config.log_t)<0) state = 1;
+	if (fscanf(f,"%i\t%i\t%i\n",&config.log_seq,&config.log_t,&config.cam_seq)<0) state = 1;
 
 	for (int i=0;i<3 && !state;i++) 
             if (fscanf(f,"%i\t",&config.rec_t[i])<0) state = 1;
@@ -68,6 +68,7 @@ int config_open(const char *path) {
         printf("No config file or config syntax issue. New will be created!\n");
         //some default values if no config file
 	config.log_seq = 0;
+	config.cam_seq = 0;
 	config.log_t = 0;
         config.rec_ypr[0][0] = 135;
         config.rec_ypr[0][1] = 30;
@@ -131,7 +132,7 @@ int config_save() {
         return -1;
     }
 
-	fprintf(f,"%i\t%i\n",config.log_seq,config.log_t);
+	fprintf(f,"%i\t%i\t%i\n",config.log_seq,config.log_t,config.cam_seq);
 
     for (int j=0;j<3;j++)
         fprintf(f,"%i\t",config.rec_t[j]);

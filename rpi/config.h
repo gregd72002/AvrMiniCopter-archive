@@ -2,7 +2,7 @@
 #define QCONFIG_H
 
 struct s_config {
-    int log_seq,log_t;
+    int log_seq,log_t,cam_seq;
     int rec_t[3]; //t min, t_max, t inflight
     int rec_ypr[2][3]; //y, p, r
     int s_pid[3][5]; //y,p,r + [max,imax,kp,ki,kd]

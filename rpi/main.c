@@ -100,19 +100,18 @@ void do_adjustments() {
     static int adj3 = 1; //for trim
     static int adj4 = 500; //for altitude (mm)
 
-    static unsigned int cam_count = 0;
     static char str[128];
 
     switch (rec.aux) {
 	case 8: //L2
 	    	memset(str, '\0', 128);
-		sprintf(str, "/usr/local/bin/vidsnap.sh %i ", cam_count++);
+		sprintf(str, "/usr/local/bin/vidsnap.sh %05d ", config.cam_seq++);
 		system(str);
 		break;
 	case 10: //L1
 		//take picture
 	    	memset(str, '\0', 128);
-		sprintf(str, "/usr/local/bin/picsnap.sh %i ", cam_count++);
+		sprintf(str, "/usr/local/bin/picsnap.sh %05d ", config.cam_seq++);
 		system(str);
 		break;
         case 11: //R1
