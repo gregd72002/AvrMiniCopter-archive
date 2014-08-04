@@ -54,7 +54,6 @@ void sendConfig() {
     spi_sendIntPacket(3,&mode);
 
     int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
-    printf("%i\n",gyro_orientation);
     spi_sendIntPacket(4,&gyro_orientation);
 
     spi_sendIntPacket(9,&config.mpu_addr);
@@ -98,7 +97,7 @@ void do_adjustments() {
     if (rec.aux<0) return;
 
     static int adj3 = 1; //for trim
-    static int adj4 = 500; //for altitude (mm)
+    static int adj4 = 1000; //for altitude (mm)
 
     static char str[128];
 
@@ -358,7 +357,10 @@ void loop() {
 	if (!bs_err) {
 		static float _a = bs.alt; 
 		bs_err = bs_update(c*dt_ms);
-		if (bs_err) bs.alt = _a;
+		if (bs_err) {
+			bs.alt = _a;
+			printf("Disabling barometer. Fixing altitude at %2.1f\n",bs.alt);
+		}
 	} 
 
 	switch(config.log_t) {
@@ -392,7 +394,7 @@ void loop() {
 			log5_print();
 		break;
 		case 99:
-			printf("%i\n",spi_v[254]);
+			printf("SPI CRC errors: %i\n",spi_v[254]);
 		break;
 		default: break;
 	}

@@ -157,6 +157,10 @@ int process_command() {
     if (SPI_getPacket(packet.b)==0) {
         last_command = millis();
         switch(packet.t) {
+#ifdef DEBUG
+	    case 0: Serial.println("Received packet 0! Check your SPI connection!");
+	 		break;
+#endif
 	    case 1: config_count = packet.v; break;
             case 2: log_mode = packet.v; 
 		       config_count--;
@@ -248,7 +252,7 @@ int process_command() {
 	    case 254: wdt_enable(WDTO_15MS); while (1); break;
             default: 
 #ifdef DEBUG
-                      Serial.print("Unknown command: "); Serial.println(packet.t);
+                      Serial.print("Unknown command: "); Serial.print(packet.t); Serial.print(" "); Serial.print(packet.v); Serial.print(" "); Serial.println(c);
 #endif
                       return 0;
         }
@@ -484,7 +488,7 @@ void controller_loop() {
     if (fly_mode == 0) {
 	
 	//yaw requests will be fed directly to rate pid                          
-	if (abs(yprt[0])>5) {
+	if (abs(yprt[0])>2) {
 	    pid_s[0].value = yprt[0]*pid_acro_p;                                 
 	    yaw_target = mympu.ypr[0];                                              
 	} else pid_update(&pid_s[0],yaw_target,mympu.ypr[0],loop_s);        
@@ -531,12 +535,11 @@ void controller_loop() {
 int check_init() {
 	if (config_count!=0) return -1;
 
-    initMotors();
-
 #ifdef DEBUG
     Serial.println("Configuration received.");
 #endif
 
+    initMotors();
 
     return 0;
 }
