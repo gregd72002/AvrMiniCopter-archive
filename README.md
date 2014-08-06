@@ -41,5 +41,5 @@ You will need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar (SPI
 ## Built instructions (WIP)
 * RPi folder: issue make
 * Arduino foler: you will need Arduino-Makefile (https://github.com/sudar/Arduino-Makefile) and Arduino libraries 1.0.5
-* Build folder: work in progress
+* Image folder: work in progress
 
