@@ -30,21 +30,16 @@ You will need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar (SPI
 * Bluetooth USB dongle & PS3 controller (you can get away without them and use keyboard if you really want)
 
 
-Wiki main: https://github.com/rpicopter/AvrMiniCopter/wiki
-
-How does it work: https://github.com/rpicopter/AvrMiniCopter/wiki/How-does-it-work
-
-Getting started: https://github.com/rpicopter/AvrMiniCopter/wiki/Getting-started
-
-Wiring: https://github.com/rpicopter/AvrMiniCopter/wiki/Wiring
-
-History: https://github.com/rpicopter/AvrMiniCopter/wiki/History
+## Resources
+* Wiki main: https://github.com/rpicopter/AvrMiniCopter/wiki
+* How does it work: https://github.com/rpicopter/AvrMiniCopter/wiki/How-does-it-work
+* Getting started: https://github.com/rpicopter/AvrMiniCopter/wiki/Getting-started
+* Wiring: https://github.com/rpicopter/AvrMiniCopter/wiki/Wiring
+* History: https://github.com/rpicopter/AvrMiniCopter/wiki/History
 
 
 
-RPi folder: issue make
-
-Arduino foler: you will need Arduino-Makefile (https://github.com/sudar/Arduino-Makefile) and Arduino libraries 1.0.5
-
-Build folder: work in progress
+* RPi folder: issue make
+* Arduino foler: you will need Arduino-Makefile (https://github.com/sudar/Arduino-Makefile) and Arduino libraries 1.0.5
+* Build folder: work in progress
 
