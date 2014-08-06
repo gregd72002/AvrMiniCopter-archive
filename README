@@ -1,1 +1,7 @@
+See wiki for information: 
+https://github.com/rpicopter/AvrMiniCopter/wiki
+
+
+RPi folder: issue make
+Arduino foler: you will need Arduino-Makefile and Arduino libraries 1.0.5
 download https://github.com/sudar/Arduino-Makefile
