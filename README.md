@@ -36,6 +36,7 @@ You will need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar (SPI
 * Getting started: https://github.com/rpicopter/AvrMiniCopter/wiki/Getting-started
 * Wiring: https://github.com/rpicopter/AvrMiniCopter/wiki/Wiring
 * History: https://github.com/rpicopter/AvrMiniCopter/wiki/History
+* My quadcopter: https://github.com/rpicopter/AvrMiniCopter/wiki/My-Quadcopter
 
 
 ## Built instructions (WIP)
