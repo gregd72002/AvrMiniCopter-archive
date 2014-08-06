@@ -38,6 +38,9 @@ You will also need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar
 * History: https://github.com/rpicopter/AvrMiniCopter/wiki/History
 * My quadcopter: https://github.com/rpicopter/AvrMiniCopter/wiki/My-Quadcopter
 
+## Inspiration
+* http://ghowen.me/build-your-own-quadcopter-autopilot/
+* Vincent Jaunet (https://github.com/gregd72002/QUADCOPTER)
 
 ## Built instructions (WIP)
 * RPi folder: issue make
