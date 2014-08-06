@@ -42,7 +42,8 @@ You will also need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar
 * Dr Gareth Owen (http://ghowen.me/build-your-own-quadcopter-autopilot/)
 * Vincent Jaunet (https://github.com/gregd72002/QUADCOPTER)
 
-## Built instructions (WIP)
+## Build instructions (WIP)
+* Please refer to Resources above - Getting started
 * RPi folder: issue make
 * Arduino foler: you will need Arduino-Makefile (https://github.com/sudar/Arduino-Makefile) and Arduino libraries 1.0.5
 * Image folder: work in progress
