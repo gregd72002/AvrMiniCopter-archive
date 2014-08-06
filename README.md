@@ -1,10 +1,10 @@
 # Welcome to the AvrMiniCopter wiki!
 
-AvrMiniCopter is a fully featured, open-source flight controller designed to control quadcopters in X configuration.
+AvrMiniCopter is a fully featured, open-source flight controller designed to control quadcopters in X configuration. 
 
-The vision throughout the project was to create a controller that can be easily incorporated into any existing project. You do not need hacking skills or be an embedded system geek to control and program your quadcopter. 
+The vision throughout the project was to create a controller that can be easily incorporated into any existing project. You do not need hacking skills or be an embedded system geek to control and program your quadcopter. But your will need some DIY skills to build one at the first place!
 
-You will need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar (SPI capable) board. The AVR only activity is to read sensors and stabilise the quadcopters while Raspberry Pi is free to do any other tasks. You can play around with Raspberry Pi and program it in any way you want without affecting stability of your quadcopter. You can use any language like python, c/c++, java or even bash scripts without worrying about performance! As an example Raspberry Pi can do 3g communication, video recording and waypoint navigation all in parallel while AVR will take care of the quadcopter itself. The best bit - AVR boards like Arduino Pro Mini clones are ridiculously cheap! 
+You will also need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar (SPI capable) board. The AVR only activity is to read sensors and stabilise the quadcopters while Raspberry Pi is free to do any other tasks. You can play around with Raspberry Pi and program it in any way you want without affecting stability of your quadcopter. You can use any language like python, c/c++, java or even bash scripts without worrying about performance! As an example Raspberry Pi can do 3g communication, video recording and waypoint navigation all in parallel while AVR will take care of the quadcopter itself. The best bit - AVR boards like Arduino Pro Mini clones are ridiculously cheap! 
 
 ## Features
 * 2 fly modes - Auto-level & Acro
