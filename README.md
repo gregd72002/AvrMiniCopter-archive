@@ -17,7 +17,7 @@ You will also need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar
 * BMP085 / BMP180 barometer
 
 ## Roadmap
-* Altitude hold
+* Altitude hold (partially implemented)
 * support for WIFI controllers (Android & IOS)
 * Radio control transmitters (should be very straight forward given you can hook it up to RPi)
 * GPS & Waypoint navigation
