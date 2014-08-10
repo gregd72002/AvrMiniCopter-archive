@@ -3,7 +3,10 @@
 #include "pid.h"
 
 #define PI 3.141592653589793f
-static float _d_lpf_alpha = 0.0f;
+#define D_LPF_HZ 20
+#define LOOP_MS 0.05f //assuming we are running at 200Hz
+
+static float d_lpf = LOOP_MS / (LOOP_MS + 1/(2*PI*D_LPF_HZ));
 
 int pid_init(struct s_pid *pid) {
     pid->Kp=pid->Ki=pid->Kd=0.0f;
@@ -13,8 +16,6 @@ int pid_init(struct s_pid *pid) {
     pid->_KiTerm = 0.0f;
     pid->_dInput = 0.0f;
 
-    float rc = 1/(2*PI*20);
-    _d_lpf_alpha = 0.05f / (0.05f + rc);
 
     return 0;
 }
@@ -31,7 +32,7 @@ void pid_update(struct s_pid *pid, float input, float dt_s) {
     else if (pid->_KiTerm<-pid->imax) pid->_KiTerm=-pid->imax;
 
     pid->_dInput = input - (pid->_lastInput) / dt_s;
-    pid->_dInput = pid->_lastDInput + _d_lpf_alpha * (pid->_dInput - pid->_lastDInput);
+    pid->_dInput = pid->_lastDInput + d_lpf * (pid->_dInput - pid->_lastDInput);
     
     pid->value = input*pid->Kp + pid->_KiTerm - pid->_dInput*pid->Kd;
 

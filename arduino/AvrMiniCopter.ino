@@ -30,17 +30,14 @@ struct s_pid pid_s[3];
 float pid_acro_p;
 
 #ifdef ALTHOLD 
-struct s_pid pid_alt, pid_vz;
+struct s_pid pid_accel;
+float accel_err = 0.0f;
+
 float altitude = 0.0f;
 int alt_hold = 0;
 float alt_hold_altitude = 0.0f;
 int alt_hold_throttle = 0;
-float smooth_az = 0.0f;
 
-float k_vz = -0.001f;
-float k_h_est = -0.008f;
-float vz_est = 0.f;
-float h_est = 0.f;
 #endif
 
 
@@ -116,8 +113,7 @@ void setup() {
         pid_init(&pid_s[i]);
     }
 #ifdef ALTHOLD
-    pid_init(&pid_alt);
-    pid_init(&pid_vz);
+    pid_init(&pid_accel);
 #endif
 
 	config_count = 1;
@@ -186,11 +182,7 @@ int process_command() {
             case 14: altitude = packet.v/10.f; break;
             case 15: alt_hold = packet.v; 
                        alt_hold_throttle = yprt[3]; 
-                       alt_hold_altitude = h_est;
-                       vz_est = 0.f;
-#ifdef DEBUG
-                       Serial.print("Alt hold: "); Serial.println(alt_hold);
-#endif
+                       alt_hold_altitude = altitude;
                        break;
             case 16: alt_hold_altitude += packet.v/1000.f; break;
 #endif
@@ -201,6 +193,12 @@ int process_command() {
             case 22: trim[2] = packet.v; break;
 
 #ifdef ALTHOLD
+            case 75: pid_accel.max = packet.v; config_count--; break; 
+            case 76: pid_accel.imax = packet.v; config_count--; break; 
+            case 77: pid_accel.Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 78: pid_accel.Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 79: pid_accel.Kd = (float)packet.v/10000.f; config_count--; break; 
+/*
             case 80: pid_alt.max = packet.v; config_count--; break; 
             case 81: pid_alt.imax = packet.v; config_count--; break; 
             case 82: pid_alt.Kp = (float)packet.v/1000.f; config_count--; break; 
@@ -211,6 +209,7 @@ int process_command() {
             case 92: pid_vz.Kp = (float)packet.v/1000.f; config_count--; break; 
             case 93: pid_vz.Ki = (float)packet.v/1000.f; config_count--; break; 
             case 94: pid_vz.Kd = (float)packet.v/10000.f; config_count--; break; 
+*/
 #endif
 
             case 100: pid_r[0].max = packet.v; config_count--; break; 
@@ -262,9 +261,11 @@ int process_command() {
 
 #ifdef ALTHOLD
 void log_altitude() {
+/*
 	sendPacket(30,alt_hold_altitude*10.f);
 	sendPacket(31,vz_est*100.f);
 	sendPacket(32,h_est*100.f);
+*/
 }
 #endif
 
@@ -453,8 +454,15 @@ void controller_loop() {
     loop_s = (float)(millis() - p_millis)/1000.0f;
     p_millis = millis();
 
-/*
 #ifdef ALTHOLD
+    float desired_accel = 0.f; 
+    accel_err += 0.11164f * (desired_accel - mympu.accel[2]*100.f - accel_err);
+    pid_update(&pid_accel,accel_err,loop_s);
+    if (alt_hold) {
+        yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
+    } 
+
+/*
     //altitude hold
     int _a = mympu.accel[2]*250;
     smooth_az = 0.95f * smooth_az + 0.05f * (float)_a/250.f;
@@ -473,8 +481,8 @@ void controller_loop() {
     if (alt_hold) {
         yprt[3] = (int)(alt_hold_throttle + pid_alt.value);// - pid_vz.value; 
     } 
-#endif
 */
+#endif
 
     if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
     if (yaw_target-mympu.ypr[0]>180.0f) yaw_target*=-1;     
