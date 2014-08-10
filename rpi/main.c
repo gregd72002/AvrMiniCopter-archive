@@ -46,7 +46,7 @@ void sendTrims() {
 
 void sendConfig() {
 
-    int config_count = 47;
+    int config_count = 52;
     spi_sendIntPacket(1,&config_count);
 
     spi_sendIntPacket(2,&config.log_t);
@@ -72,6 +72,7 @@ void sendConfig() {
         }
 
     for (int i=0;i<3;i++) { 
+        spi_sendIntPacket(70+i,&config.accel_pid[i]);
         spi_sendIntPacket(80+i,&config.alt_pid[i]);
         spi_sendIntPacket(90+i,&config.vz_pid[i]);
     }

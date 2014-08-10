@@ -193,12 +193,11 @@ int process_command() {
             case 22: trim[2] = packet.v; break;
 
 #ifdef ALTHOLD
-            case 75: pid_accel.max = packet.v; config_count--; break; 
-            case 76: pid_accel.imax = packet.v; config_count--; break; 
-            case 77: pid_accel.Kp = (float)packet.v/1000.f; config_count--; break; 
-            case 78: pid_accel.Ki = (float)packet.v/1000.f; config_count--; break; 
-            case 79: pid_accel.Kd = (float)packet.v/10000.f; config_count--; break; 
-/*
+            case 70: pid_accel.max = packet.v; config_count--; break; 
+            case 71: pid_accel.imax = packet.v; config_count--; break; 
+            case 72: pid_accel.Kp = (float)packet.v/1000.f; config_count--; break; 
+            case 73: pid_accel.Ki = (float)packet.v/1000.f; config_count--; break; 
+            case 74: pid_accel.Kd = (float)packet.v/10000.f; config_count--; break; 
             case 80: pid_alt.max = packet.v; config_count--; break; 
             case 81: pid_alt.imax = packet.v; config_count--; break; 
             case 82: pid_alt.Kp = (float)packet.v/1000.f; config_count--; break; 
@@ -209,7 +208,6 @@ int process_command() {
             case 92: pid_vz.Kp = (float)packet.v/1000.f; config_count--; break; 
             case 93: pid_vz.Ki = (float)packet.v/1000.f; config_count--; break; 
             case 94: pid_vz.Kd = (float)packet.v/10000.f; config_count--; break; 
-*/
 #endif
 
             case 100: pid_r[0].max = packet.v; config_count--; break; 
