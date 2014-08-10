@@ -3,7 +3,6 @@
 #endif
 
 int crc_err;
-#include <avr/wdt.h>
 #include "mpu.h"
 #include "I2Cdev.h"
 #include <SPI.h>
@@ -249,7 +248,6 @@ int process_command() {
             case 224: pid_s[2].Kd = (float)packet.v/10000.f; config_count--; break; 
 	    case 250:	motorReattach(packet.v); break;
 	    case 251:	motorTest(packet.v); break;
-	    case 254: wdt_enable(WDTO_15MS); while (1); break;
             default: 
 #ifdef DEBUG
                       Serial.print("Unknown command: "); Serial.print(packet.t); Serial.print(" "); Serial.print(packet.v); Serial.print(" "); Serial.println(c);
@@ -455,6 +453,7 @@ void controller_loop() {
     loop_s = (float)(millis() - p_millis)/1000.0f;
     p_millis = millis();
 
+/*
 #ifdef ALTHOLD
     //altitude hold
     int _a = mympu.accel[2]*250;
@@ -468,13 +467,14 @@ void controller_loop() {
     vz_est = vz_est + k_vz*(h_est - altitude);
     h_est = h_est + k_h_est*(h_est - altitude);
 
-    pid_update(&pid_alt,alt_hold_altitude,h_est,loop_s);
+    pid_update(&pid_alt,alt_hold_altitude-h_est,loop_s);
     //pid_update(&pid_vz,0.f,vz_est,loop_s);
 
     if (alt_hold) {
         yprt[3] = (int)(alt_hold_throttle + pid_alt.value);// - pid_vz.value; 
     } 
 #endif
+*/
 
     if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
     if (yaw_target-mympu.ypr[0]>180.0f) yaw_target*=-1;     
@@ -491,20 +491,20 @@ void controller_loop() {
 	if (abs(yprt[0])>2) {
 	    pid_s[0].value = yprt[0]*pid_acro_p;                                 
 	    yaw_target = mympu.ypr[0];                                              
-	} else pid_update(&pid_s[0],yaw_target,mympu.ypr[0],loop_s);        
+	} else pid_update(&pid_s[0],yaw_target-mympu.ypr[0],loop_s);        
 
         for (int i=1;i<3;i++)                                               
-                pid_update(&pid_s[i],yprt[i]+trim[i],mympu.ypr[i],loop_s);
+                pid_update(&pid_s[i],yprt[i]+trim[i]-mympu.ypr[i],loop_s);
 
     } else if (fly_mode == 1) {
         for (int i=0;i<3;i++)                                                   
-                pid_update(&pid_s[i],yprt[i]*pid_acro_p,0.f,loop_s);        
+                pid_update(&pid_s[i],yprt[i]*pid_acro_p,loop_s);        
         
     } 
 
     //do RATE PID                                                            
     for (int i=0;i<3;i++) {                                                  
-        pid_update(&pid_r[i],pid_s[i].value,mympu.gyro[i],loop_s);
+        pid_update(&pid_r[i],pid_s[i].value-mympu.gyro[i],loop_s);
     }                                                                        
 
     //calculate motor speeds                                        

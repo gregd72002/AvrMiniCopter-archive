@@ -12,4 +12,4 @@ To make it work you will need:
 
 
 
-This has been tested on Atmega328p (16MHz).
+This has been tested on Atmega328p (8MHz).

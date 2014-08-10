@@ -5,9 +5,7 @@ struct s_pid {
     float Kp,Ki,Kd;
     float _KiTerm,_dInput;
     float max,imax;
-    float _output;
     float value;
-    float _err;
     float _lastInput,_lastDInput;
 #ifdef DEBUG
     float _d;
@@ -16,7 +14,7 @@ struct s_pid {
 
 int pid_init(struct s_pid *pid);
 
-void pid_update(struct s_pid *pid, float desired, float actual, float dt_s);
+void pid_update(struct s_pid *pid, float input, float dt_s);
 
 
 #endif
