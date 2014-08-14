@@ -9,6 +9,7 @@ int crc_err;
 #include "SPIdev.h"
 #include "crc8.h"
 #include "pid.h"
+#include "buf.h"
 #include <Servo.h>
 
 int ret;
@@ -30,12 +31,34 @@ struct s_pid pid_s[3];
 float pid_acro_p;
 
 #ifdef ALTHOLD 
-struct s_pid pid_accel;
-float accel_err = 0.0f;
+#define MAX_ALT 20000 //200m (ensure MAX_ALT + MAX_ALT_INC fits into signed int)
+#define MAX_ALT_INC 1000 //10m
+#define MAX_ACCEL  250
+struct s_pid pid_accel, pid_alt, pid_vz;
 
-float altitude = 0.0f;
+struct s_buf<float> alt_buf;
+
+float ld;
+float accel_z = 0.f;
+
+float accel_err = 0.f;
+float accel_corr = 0.f;
+float alt_corr = 0.f;
+float vz_inc = 0.f;
+float alt_err = 0.f;
+float alt_base = 0.f;
+
+float alt = 0.f;
+float vz = 0.f;
+float pos_err, vz_target;
+
+float baro_coefficient = 5.0f;
+float bc1 = 3.f/(baro_coefficient);
+float bc2 = 3.f/(baro_coefficient*baro_coefficient);
+float bc3 = 1.f/(baro_coefficient*baro_coefficient*baro_coefficient);
+
 int alt_hold = 0;
-float alt_hold_altitude = 0.0f;
+float alt_hold_target = 0.0f;
 int alt_hold_throttle = 0;
 
 #endif
@@ -114,6 +137,9 @@ void setup() {
     }
 #ifdef ALTHOLD
     pid_init(&pid_accel);
+    pid_init(&pid_vz);
+    pid_init(&pid_alt);
+    buf_init(&alt_buf,15);
 #endif
 
 	config_count = 1;
@@ -179,12 +205,22 @@ int process_command() {
             case 12: yprt[2] = packet.v; break;
             case 13: yprt[3] = packet.v; break;
 #ifdef ALTHOLD
-            case 14: altitude = packet.v/10.f; break;
+            case 14: //altitude reading in cm - convert it into altitude error 
+			static float b;
+			if (!buf_space(&alt_buf)) b = buf_pop(&alt_buf); //buffer full
+			else b = alt_base;
+			alt_err = packet.v - (b + alt_corr);
+			break;
             case 15: alt_hold = packet.v; 
                        alt_hold_throttle = yprt[3]; 
-                       alt_hold_altitude = altitude;
+                       alt_hold_target = alt;
                        break;
-            case 16: alt_hold_altitude += packet.v/1000.f; break;
+            case 16: 
+			if (packet.v>MAX_ALT_INC) alt_hold_target += MAX_ALT_INC; 
+			else if (packet.v<-MAX_ALT_INC) alt_hold_target -= MAX_ALT_INC;
+			else alt_hold_target += packet.v;
+			if (alt_hold_target>MAX_ALT) alt_hold_target=MAX_ALT;
+			break;
 #endif
 	    case 17: config_count--; motor_min = packet.v; break;
 	    case 18: config_count--; inflight_threshold = packet.v; break;
@@ -258,6 +294,10 @@ int process_command() {
 
 
 #ifdef ALTHOLD
+void log_accel_pid() {
+	sendPacket(35,pid_accel.value);
+}
+
 void log_altitude() {
 /*
 	sendPacket(30,alt_hold_altitude*10.f);
@@ -398,6 +438,11 @@ void log() {
 	    if ((loop_count%20)==0)  //200Hz so 10times a sec... -> every 100ms
 		log_altitude();
 	break;
+	case 100: 
+	    if ((loop_count%10)==0)  //200Hz so 10times a sec... -> every 50ms
+		log_accel_pid();
+	break;
+	
 #endif
 
 	case 99:
@@ -431,11 +476,10 @@ void controller_loop() {
 #endif
     ret = mympu_update();
     if (ret < 0) {
-        //mpu_err++;
-        mympu.ypr[0]=mympu.ypr[1]=mympu.ypr[2] = 0.0f;
-        mympu.gyro[0]=mympu.gyro[1]=mympu.gyro[2] = 0.0f;
+#ifdef DEBUG
+        Serial.print("mympu_update: "); Serial.println(ret);
+#endif
         stop = 1;
-        if (ret<=-100) stop = 1;
         return;
     }
 #ifdef DEBUG
@@ -453,33 +497,41 @@ void controller_loop() {
     p_millis = millis();
 
 #ifdef ALTHOLD
-    float desired_accel = 0.f; 
-    accel_err += 0.11164f * (desired_accel - mympu.accel[2]*100.f - accel_err);
+
+//maintain altitude & velocity
+    accel_z = mympu.accel[2]*982.f; //convert accel to cm/s (9.82 * 100)
+    accel_corr += (alt_err * bc3 * loop_s);
+    vz += (alt_err * bc2 * loop_s);
+    alt_corr += (alt_err * bc1 * loop_s);
+    vz_inc = (accel_z + accel_corr) * loop_s;
+    alt_base += (vz + vz_inc * 0.5f) * loop_s;
+    alt = alt_base + alt_corr;
+    vz += vz_inc;
+    buf_push(&alt_buf, alt_base);
+//end maintain altitude & velocity 
+
+// do altitude PID
+   pos_err = alt_hold_target - alt;
+   ld = MAX_ACCEL / (2.f * pid_alt.Kp * pid_alt.Kp);
+   if (pos_err > 2.f*ld) 
+	vz_target = sqrt(2.f * MAX_ACCEL * (pos_err-ld)); 	
+   else if (pos_err < -2.f*ld)
+	vz_target = -sqrt(2.f * MAX_ACCEL * (-pos_err-ld)); 	
+   else {
+	pid_update(&pid_alt,pos_err, loop_s);
+	vz_target = pid_alt.value;
+   }
+// end altitude PID
+
+// do velocity PID
+	pid_update(&pid_vz, vz_target - vz, loop_s);
+// end velocity PID
+
+    accel_err += 0.11164f * (pid_vz.value - accel_z - accel_err);
     pid_update(&pid_accel,accel_err,loop_s);
     if (alt_hold) {
         yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
     } 
-
-/*
-    //altitude hold
-    int _a = mympu.accel[2]*250;
-    smooth_az = 0.95f * smooth_az + 0.05f * (float)_a/250.f;
-    vz_est = vz_est - smooth_az*loop_s;
-    if (vz_est>0.5f) vz_est = 0.5f;
-    else if (vz_est<-0.5f) vz_est = -0.5f;
-
-    h_est = h_est + vz_est*loop_s;
-
-    vz_est = vz_est + k_vz*(h_est - altitude);
-    h_est = h_est + k_h_est*(h_est - altitude);
-
-    pid_update(&pid_alt,alt_hold_altitude-h_est,loop_s);
-    //pid_update(&pid_vz,0.f,vz_est,loop_s);
-
-    if (alt_hold) {
-        yprt[3] = (int)(alt_hold_throttle + pid_alt.value);// - pid_vz.value; 
-    } 
-*/
 #endif
 
     if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        

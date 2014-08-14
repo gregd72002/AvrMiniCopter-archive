@@ -194,11 +194,11 @@ int mympu_update() {
     ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
     if (ret!=0) return ret; 
     if (fifoCount>1) { 
-#ifdef DEBUG
-        Serial.print("ERR Fifocount: "); Serial.println(fifoCount); 
-        do {
+        do { //empty fifo
             ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
         } while (fifoCount>1 && ret == 0);
+#ifdef DEBUG
+        Serial.print("ERR Fifocount: "); Serial.println(fifoCount); 
 #endif
         return -200;
     }

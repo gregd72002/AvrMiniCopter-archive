@@ -24,7 +24,7 @@ struct s_bs bs {
     .t = 1.0f,                                                                   
     .p = 1.0f,                                                                   
     .p0 = 1.0f,                                                                  
-    .alt = 1.0f                                                                  
+    .alt = 1.0f  //in meters                                                                
 };
 
 int bs_open();

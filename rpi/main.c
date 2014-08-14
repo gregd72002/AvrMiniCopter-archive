@@ -98,7 +98,7 @@ void do_adjustments() {
     if (rec.aux<0) return;
 
     static int adj3 = 1; //for trim
-    static int adj4 = 1000; //for altitude (mm)
+    static int adj4 = 100; //for altitude (mm)
 
     static char str[128];
 
@@ -397,6 +397,9 @@ void loop() {
 		case 99:
 			printf("SPI CRC errors: %i\n",spi_v[254]);
 		break;
+		case 100:
+			printf("Accel pid: %i\n",spi_v[35]);
+		break;
 		default: break;
 	}
 
@@ -409,7 +412,7 @@ void loop() {
         for (int i=0;i<4;i++) {
             spi_sendIntPacket(10+i,rec.yprt+i);
         }
-        int alt = (bs.alt * 10);
+        int alt = (bs.alt * 100); //in cm
         spi_sendIntPacket(14,&alt);
     }
 }

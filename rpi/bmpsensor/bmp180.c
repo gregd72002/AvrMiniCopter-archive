@@ -24,8 +24,8 @@ buy me a (root) beer someday.
 #include "i2cdev/i2cdev.h"
 
 #define OVERSAMPLING 3 //oversampling_setting
-#define PRESSURE_DELAY 26000 //us
-#define TEMPERATURE_DELAY 5000 //us
+#define PRESSURE_DELAY 26000 //us 
+#define TEMPERATURE_DELAY 5000 //us  
 #define delay_ms(a)    usleep(a*1000)
 
 #define BMP180_ADDR 0x77 // 7-bit address
@@ -147,7 +147,7 @@ int bs_reset() {
 }
 
 int bs_update(unsigned long t_ms) {
-    if (state==0 && (t_ms-dt)>(PRESSURE_DELAY/1000)) {
+    if (state==0 && (t_ms-dt)>(PRESSURE_DELAY/1000)) { //_DELAY provided in us thus converting to ms
         dt = t_ms;
         state = 1;
         if (getPressure(bs.p)<0) {
