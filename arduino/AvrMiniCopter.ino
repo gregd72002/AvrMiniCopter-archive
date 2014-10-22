@@ -30,7 +30,6 @@ struct s_pid pid_r[3];
 struct s_pid pid_s[3];
 float pid_acro_p;
 
-#ifdef ALTHOLD 
 #define MAX_ALT 20000 //200m (ensure MAX_ALT + MAX_ALT_INC fits into signed int)
 #define MAX_ALT_INC 1000 //10m
 #define MAX_ACCEL  250
@@ -61,7 +60,6 @@ int alt_hold = 0;
 float alt_hold_target = 0.0f;
 int alt_hold_throttle = 0;
 
-#endif
 
 
 unsigned char loop_count = 0;
@@ -74,7 +72,7 @@ unsigned int err_o = 0; //cumulative number of MPU/DMP reads that had overflow b
 
 
 byte config_count; //when 0 this means config has been received
-byte mode;
+byte status;
 byte fly_mode;
 byte log_mode;
 unsigned short gyro_orientation;
@@ -143,7 +141,7 @@ void setup() {
 #endif
 
 	config_count = 1;
-	mode = 0;
+	status = 0;
 	fly_mode = 0;
 	log_mode = 0;
 	mpu_addr = 136; //for identity maytix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
@@ -168,9 +166,7 @@ int process_command() {
 #ifdef DEBUG
         //Serial.println("No communication!"); 
 #endif
-#ifdef ALTHOLD
         alt_hold=0;
-#endif
 	yprt[0]=yprt[1]=yprt[2]=yprt[3]=0;
     }
     //each command is 4 byte long: what, value(2), crc - do it till buffer empty
@@ -204,7 +200,7 @@ int process_command() {
             case 11: yprt[1] = packet.v; break;
             case 12: yprt[2] = packet.v; break;
             case 13: yprt[3] = packet.v; break;
-#ifdef ALTHOLD
+//#ifdef ALTHOLD
             case 14: //altitude reading in cm - convert it into altitude error 
 			static float b;
 			if (!buf_space(&alt_buf)) b = buf_pop(&alt_buf); //buffer full
@@ -221,14 +217,13 @@ int process_command() {
 			else alt_hold_target += packet.v;
 			if (alt_hold_target>MAX_ALT) alt_hold_target=MAX_ALT;
 			break;
-#endif
+//#endif
 	    case 17: config_count--; motor_min = packet.v; break;
 	    case 18: config_count--; inflight_threshold = packet.v; break;
             case 20: trim[0] = packet.v; break;
             case 21: trim[1] = packet.v; break;
             case 22: trim[2] = packet.v; break;
 
-#ifdef ALTHOLD
             case 70: pid_accel.max = packet.v; config_count--; break; 
             case 71: pid_accel.imax = packet.v; config_count--; break; 
             case 72: pid_accel.Kp = (float)packet.v/1000.f; config_count--; break; 
@@ -244,7 +239,6 @@ int process_command() {
             case 92: pid_vz.Kp = (float)packet.v/1000.f; config_count--; break; 
             case 93: pid_vz.Ki = (float)packet.v/1000.f; config_count--; break; 
             case 94: pid_vz.Kd = (float)packet.v/10000.f; config_count--; break; 
-#endif
 
             case 100: pid_r[0].max = packet.v; config_count--; break; 
             case 101: pid_r[0].imax = packet.v; config_count--; break; 
@@ -281,6 +275,11 @@ int process_command() {
             case 224: pid_s[2].Kd = (float)packet.v/10000.f; config_count--; break; 
 	    case 250:	motorReattach(packet.v); break;
 	    case 251:	motorTest(packet.v); break;
+	    case 255: switch (packet.v) {
+			case 0: sendPacket(255,status); break;
+			case 1: status=2; break;
+			case 2: sendPacket(255,crc_err); break;
+			} break;
             default: 
 #ifdef DEBUG
                       Serial.print("Unknown command: "); Serial.print(packet.t); Serial.print(" "); Serial.print(packet.v); Serial.print(" "); Serial.println(c);
@@ -546,8 +545,9 @@ void controller_loop() {
     if (fly_mode == 0) {
 	
 	//yaw requests will be fed directly to rate pid                          
-	if (abs(yprt[0])>2) {
-	    pid_s[0].value = yprt[0]*pid_acro_p;                                 
+
+	if (abs(yprt[0])>7) {
+            pid_update(&pid_s[0],yprt[0]/10,loop_s);        
 	    yaw_target = mympu.ypr[0];                                              
 	} else pid_update(&pid_s[0],yaw_target-mympu.ypr[0],loop_s);        
 
@@ -555,8 +555,9 @@ void controller_loop() {
                 pid_update(&pid_s[i],yprt[i]+trim[i]-mympu.ypr[i],loop_s);
 
     } else if (fly_mode == 1) {
-        for (int i=0;i<3;i++)                                                   
-                pid_update(&pid_s[i],yprt[i]*pid_acro_p,loop_s);        
+                pid_update(&pid_s[0],yprt[0]/10,loop_s);        
+                pid_update(&pid_s[1],yprt[1]*pid_acro_p,loop_s);        
+                pid_update(&pid_s[2],yprt[2]*pid_acro_p,loop_s);        
         
     } 
 
@@ -605,6 +606,9 @@ int check_init() {
 int gyroCal() {
     static float accel = 0.0f;
     static unsigned int c = 0;
+    static unsigned int loop_c = 0;
+    loop_c++;
+    if (loop_c>50000) status=255;
     ret = mympu_update();
     if (ret!=0) {
 #ifdef DEBUG
@@ -630,23 +634,29 @@ int gyroCal() {
 
 void loop() {
     process_command();
-    if (config_count!=0) return;
 
-    switch (mode) {
-        case 0:
-            if (check_init()==0) mode = 1;
+    if (status==0) {
+	    status = 1;
+	    sendPacket(255,status); 
+    }
+
+    switch (status) {
+        case 2:
+            if (check_init()==0)
+		status = 3;
 	    break;
-        case 1: 
+        case 3: 
             ret = mympu_open(mpu_addr,200,gyro_orientation);
             delay(150);
-            if (ret == 0) mode = 2;
+            if (ret == 0) 
+		status = 4;
+            break;
+        case 4:
+            if (gyroCal()==0) 
+		status = 5;
             break;
 
-        case 2:
-            if (gyroCal()==0) mode = 3;
-            break;
-
-        case 3:
+        case 5:
             controller_loop();
             break;
 

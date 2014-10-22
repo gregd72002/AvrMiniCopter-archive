@@ -48,7 +48,7 @@ int config_open(const char *path) {
             if (fscanf(f,"%i\t",&config.accel_pid[j])<0) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
-        if (fscanf(f,"%i\t",&config.a_pid[0])<0) state = 1;
+        if (fscanf(f,"%i\t%i",&config.a_pid[0],&config.baro_f)<0) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
         for (int i=0;i<9 && !state;i++)
@@ -117,6 +117,7 @@ int config_open(const char *path) {
         config.vz_pid[2] = 6000;
         config.accel_pid[2] = 750;
         config.accel_pid[3] = 1500;
+	config.baro_f = 500;
 
         for (int i=0;i<9;i++) config.gyro_orient[i] = 0; 
 
@@ -175,7 +176,7 @@ int config_save() {
         fprintf(f,"%i\t",config.accel_pid[j]);
     fprintf(f,"\n");
 
-    fprintf(f,"%i\t",config.a_pid[0]);
+    fprintf(f,"%i\t%i",config.a_pid[0],config.baro_f);
     fprintf(f,"\n");
 
 	for (int i=0;i<9;i++)

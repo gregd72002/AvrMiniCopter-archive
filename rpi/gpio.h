@@ -17,7 +17,7 @@ int linuxgpio_setpin(int pin, int value);
 
 int linuxgpio_getpin(int pin);
 
-int linuxgpio_highpulsepin(int pin);
+int linuxgpio_highpulsepin(int pin, int delay);
 
 int linuxgpio_initpin(int p);
 

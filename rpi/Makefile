@@ -18,6 +18,7 @@ all: controller.o avrspi.o
 		config.o \
 		ps3controller.o \
 		gpio.o \
+		routines.o \
 		mpu.o \
 		flightlog.o \
 		bmpsensor/libbs.a \
@@ -27,7 +28,7 @@ all: controller.o avrspi.o
 		avrspi.o
 	
 
-controller.o: mpu.o flightlog.o bmpsensor/libbs.a libs/libi2cdev.a spidev.o config.o gpio.o ps3controller.o 
+controller.o: mpu.o flightlog.o bmpsensor/libbs.a libs/libi2cdev.a routines.o spidev.o config.o gpio.o ps3controller.o 
 
 speedcontroller/libspeedcontroller.a:
 	$(MAKE) -C speedcontroller/ 

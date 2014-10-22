@@ -15,6 +15,7 @@ extern struct s_mympu mympu;
 
 int mympu_open(short addr,unsigned int rate,unsigned short orient);
 int mympu_update();
+void mympu_reset_fifo();
 #ifdef MPU9150
 int mympu_update_compass();
 #endif

@@ -48,8 +48,14 @@ void _spi_addByte(uint8_t b) {
         //uint8_t c = CRC8(buf,3);
         if (CRC8(buf,3) == buf[3]) {
             spi_v[buf[0]] = v;
-        } else printf("CRC failed\n");
-        p = 0;
+	    p = 0;
+        } else {
+		printf("CRC failed %i %i %i\n",buf[0],v,buf[3]);
+		buf[0]=buf[1];
+		buf[1]=buf[2];
+		buf[2]=buf[3];
+		p--;
+	}
     }
 }
 

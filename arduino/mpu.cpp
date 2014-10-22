@@ -157,6 +157,10 @@ static inline float shift_180(float x) {
     return x+180>180?x-180:x+180;
 }
 
+void mympu_reset_fifo() {
+	mpu_reset_fifo();
+}
+
 #ifdef MPU9150
 int mympu_update_compass() {
     if (_c <_rate/50) return 1;
@@ -182,7 +186,7 @@ int mympu_update() {
 		// will return:
 		//	0 - if ok
 		//	1 - no packet available
-		//	2 - if BIT_FIFO_OVERFLOWN is set
+		//	2 - if BIT_FIFO_OVERFLOWN is set (mpu will reset fifo automatically)
 		//	3 - if frame corrupted
 		//       <0 - if error
 		//

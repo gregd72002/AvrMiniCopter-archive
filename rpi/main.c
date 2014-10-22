@@ -20,10 +20,11 @@
 #include "bmpsensor/interface.h"
 #include "mpu.h"
 
-#define delay_ms(a) usleep(a*1000)
+#include "routines.h"
 
 int ret;
 int err = 0;
+int stop = 0;
 int bs_err = 0;
 
 unsigned long flight_time = 0;
@@ -36,6 +37,8 @@ int alt_hold = 0;
 int throttle_hold = 0;
 int throttle_target = 0;
 
+int dummy = 0;
+
 void sendTrims() {
     for (int i=0;i<3;i++)
         spi_sendIntPacket(20+i,&trim[i]);
@@ -46,7 +49,7 @@ void sendTrims() {
 
 void sendConfig() {
 
-    int config_count = 52;
+    int config_count = 56;
     spi_sendIntPacket(1,&config_count);
 
     spi_sendIntPacket(2,&config.log_t);
@@ -60,25 +63,29 @@ void sendConfig() {
 
     spi_sendIntPacket(17,&config.rec_t[0]);
     spi_sendIntPacket(18,&config.rec_t[2]);
-
+//6
     for (int i=0;i<4;i++) 
             spi_sendIntPacket(5+i,&config.motor_pin[i]);
-
+//10
 //PIDS
     for (int i=0;i<3;i++) 
         for (int j=0;j<5;j++) {
             spi_sendIntPacket(100+i*10+j,&config.r_pid[i][j]);
             spi_sendIntPacket(200+i*10+j,&config.s_pid[i][j]);
         }
-
-    for (int i=0;i<3;i++) { 
+//40
+    for (int i=0;i<5;i++) { 
         spi_sendIntPacket(70+i,&config.accel_pid[i]);
         spi_sendIntPacket(80+i,&config.alt_pid[i]);
         spi_sendIntPacket(90+i,&config.vz_pid[i]);
     }
-
+//55
 	spi_sendIntPacket(130,&config.a_pid[0]);
+//56
 //END PIDS
+	int config_done = 1;
+	spi_sendIntPacket(255,&config_done);
+	mssleep(1000);
 
 }
 
@@ -92,6 +99,13 @@ void checkPIDs() {
         if (config.s_pid[i][4]<0) config.s_pid[i][4]=0;
     }
 
+}
+
+void reset_avr() {
+                ret=linuxgpio_initpin(25);
+                linuxgpio_highpulsepin(25,500);
+                linuxgpio_close();
+                mssleep(1500);
 }
 
 void do_adjustments() {
@@ -131,17 +145,17 @@ void do_adjustments() {
             break;
         case 3: 
             if (rec.yprt[3]<config.rec_t[2]) {
-                ret=linuxgpio_initpin(25);
-                linuxgpio_highpulsepin(25);
-                linuxgpio_close();
+		stop=1;
+/*
+		reset_avr();
                 ret=config_open("/var/local/rpicopter.config");
-                delay_ms(1000);
                 mode = 0;
                 alt_hold = 0;
                 throttle_hold = 0;
                 sendConfig();
                 sendTrims();
                 bs_reset();
+*/
             }
             break;
         case 12:
@@ -204,7 +218,7 @@ void do_adjustments() {
 void catch_signal(int sig)
 {
     printf("signal: %i\n",sig);
-    err = 1;
+    stop = 1;
 }
 
 long dt_ms = 0;
@@ -319,21 +333,54 @@ void stack_prefault(void) {
 
 unsigned long c = 0,k = 0;
 
+//#define NOCONTROLLER 1
 void loop() {
-    sendConfig();
+    int prev_status = spi_v[255];
+    int delay = 500;
+    dummy = 0;
+    spi_sendIntPacket(255,&dummy);
+    mssleep(250);
+    while (spi_v[255]!=5 && !stop) {
+	spi_sendIntPacket(255,&dummy);
+	mssleep(delay);
+        if ((prev_status != spi_v[255]) && spi_v[255]!=-1) {
+		printf("AVR initiation: %i/5\n",spi_v[255]);	
+		prev_status = spi_v[255];
+	}
+	switch (spi_v[255]) {
+		case -1: break;
+		case 0: break;
+		case 1: spi_v[255]=-1; sendConfig(); delay=250; break;
+		case 2: break;
+		case 3: break;
+		case 4: delay=100; break;
+		case 5: break;
+		case 255: spi_v[255]=-1; reset_avr(); delay=500; break; 
+		default: printf("Unknown AVR status %i\n",spi_v[255]); break;
+	} 
+    }
     bs_reset();
     clock_gettime(CLOCK_REALTIME,&t2);                                           
     ts = t1 = t2;
 
-    while (1 && !err) {
+    while (1 && !err && !stop) {
+#ifndef NOCONTROLLER
         ret = rec_update(); 
         // 0 - no update but read ok
         // 1 - update
         if (ret < 0) {
-            printf("Receiver reading error: [%s]\n",strerror(ret));
             err = 1;
+            printf("Receiver reading error: [%s]\n",strerror(ret));
             return;
         }
+#else
+	ret = 0;
+	rec.aux = -1;
+	rec.yprt[0] = 0;
+	rec.yprt[1] = 0;
+	rec.yprt[2] = 0;
+	rec.yprt[2] = 1000;
+#endif
 
         if (alt_hold && abs(rec.yprt[3]) > (config.rec_t[1]-50)) {
             alt_hold = 0;
@@ -429,12 +476,15 @@ int main() {
         perror("sched_setscheduler failed");
         exit(-1);
     }
+
     if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
         perror("mlockall failed");
         exit(-2);
     }
 
     stack_prefault();
+
+    reset_avr();
     ret=config_open("/var/local/rpicopter.config");
     if (ret<0) {
         printf("Failed to initiate config! [%s]\n", strerror(ret));	
@@ -447,11 +497,13 @@ int main() {
         return -1;                                                               
     }   
 
+#ifndef NOCONTROLLER
     ret=rec_open();
     if (ret<0) {
         printf("Failed to initiate receiver! [%s]\n", strerror(ret));	
         return -1;
     }
+#endif
 
     ret=spi_init();
     if (ret <0) {
@@ -466,8 +518,10 @@ int main() {
         return -1;
     }
 
-    delay_ms(100);
+    mssleep(100);
     printf("int size: %i\nlong size: %i\nfloat size: %i\nyprt size: %i\n",sizeof(int),sizeof(long),sizeof(float),sizeof(rec.yprt));
+
+
     printf("Starting main loop...\n");
 
     loop();

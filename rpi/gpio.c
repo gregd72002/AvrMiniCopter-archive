@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include "routines.h"
 
 /*
  * GPIO user space helpers
@@ -173,13 +174,14 @@ int linuxgpio_getpin(int pin)
 
 }
 
-int linuxgpio_highpulsepin(int pin)
+int linuxgpio_highpulsepin(int pin, int delay)
 {
 
     if ( linuxgpio_fds[pin & PIN_MASK] < 0 )
         return -1;
 
     linuxgpio_setpin(pin, 1);
+    mssleep(delay);
     linuxgpio_setpin(pin, 0);
 
     return 0;
