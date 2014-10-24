@@ -1,4 +1,3 @@
-#include <inttypes.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -9,6 +8,14 @@
 #include <getopt.h>
 #include "routines.h"
 #include "msg.h"
+#include <inttypes.h>
+
+#ifndef SCNu8
+	#define SCNu8 "hhu"
+#endif
+#ifndef SCNi16
+	#define SCNi16 "hi"
+#endif
 
 int stop = 0;
 void print_usage() {

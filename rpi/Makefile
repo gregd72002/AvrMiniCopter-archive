@@ -1,9 +1,11 @@
 CXX=g++
-CXXFLAGS= -Wall -g -O2 -DDEBUG
+CXX_OPTS= -Wall -g -O2 -DDEBUG
+CXXFLAGS=$(CXX_OPTS)
 
 CC=cc
 CFLAGS=
-LDFLAGS=-lstdc++ -lm 
+CC_OPTS=-lstdc++ -lm
+LDFLAGS=$(CC_OPTS)
 #LDFLAGS=-lpthread -pthread -lstdc++ -lsupc++ 
 #LD_OPTS=-lpthread -lrt -lstdc++
 
@@ -14,18 +16,18 @@ OBJ_AVRSPI=avrspi.o routines.o gpio.o spidev.o
 OBJ_AVRSPI_CMD=avrspi_cmd.o routines.o
 
 %.o: %.c                                                                         
-	$(CXX) -c $(CXXFLAGS) $< -o $@ 
+	$(CXX) -c $(CXXFLAGS) $(CXX_OPTS) $< -o $@ 
 
 all: avrcontroller avrspi avrspi_cmd
 
 avrcontroller: $(OBJ_AVRCONTROLLER)
-	$(CC) $(CFLAGS) $(OBJ_AVRCONTROLLER) -o avrcontroller $(LDFLAGS) 
+	$(CC) $(CFLAGS) $(OBJ_AVRCONTROLLER) -o avrcontroller $(LDFLAGS) $(CC_OPTS) 
 
 avrspi: $(OBJ_AVRSPI)
-	$(CC) $(CFLAGS) $(OBJ_AVRSPI) -o avrspi $(LDFLAGS) 
+	$(CC) $(CFLAGS) $(OBJ_AVRSPI) -o avrspi $(LDFLAGS) $(CC_OPTS) 
 
 avrspi_cmd: $(OBJ_AVRSPI_CMD)
-	$(CC) $(CFLAGS) $(OBJ_AVRSPI_CMD) -o avrspi_cmd $(LDFLAGS) 
+	$(CC) $(CFLAGS) $(OBJ_AVRSPI_CMD) -o avrspi_cmd $(LDFLAGS) $(CC_OPTS) 
 
 receiver/libreceiver.a:
 	$(MAKE) -C receiver/ 
