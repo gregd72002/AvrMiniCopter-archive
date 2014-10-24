@@ -21,4 +21,3 @@ byte CRC8(const byte *data, byte len) {
 }
 
 #endif
-

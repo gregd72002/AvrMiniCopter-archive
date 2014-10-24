@@ -34,7 +34,9 @@ static uint16_t delay = 100;
 static int ret;
 static int fd;
 
-int spi_v[256];
+
+struct s_msg spi_buf[SPI_BUF_SIZE];
+int spi_buf_c = 0;
 
 void _spi_addByte(uint8_t b) {
     static uint8_t buf[4];
@@ -47,10 +49,16 @@ void _spi_addByte(uint8_t b) {
         v = buf[2] << 8 | buf [1]; 
         //uint8_t c = CRC8(buf,3);
         if (CRC8(buf,3) == buf[3]) {
-            spi_v[buf[0]] = v;
+	    if (spi_buf_c == SPI_BUF_SIZE) {
+		printf("SPI input buffer full. Resetting.");
+		spi_buf_c = 0;
+	    }
+	    spi_buf[spi_buf_c].t = buf[0];
+	    spi_buf[spi_buf_c].v = v;
+	    spi_buf_c++;
 	    p = 0;
         } else {
-		printf("CRC failed %i %i %i\n",buf[0],v,buf[3]);
+		printf("Received CRC failed msg %i %i %i\n",buf[0],v,buf[3]);
 		buf[0]=buf[1];
 		buf[1]=buf[2];
 		buf[2]=buf[3];
@@ -65,7 +73,7 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
     data[len] = CRC8((unsigned char*)(data),len);
     len++;
     struct spi_ioc_transfer tr[len];
-    for (int i=0;i<len;i++) {
+    for (unsigned int i=0;i<len;i++) {
         tr[i].tx_buf = (unsigned long)(data+i);
         //tr[i].rx_buf = (unsigned long)(buf.b+i);
         tr[i].rx_buf = (unsigned long)(dummy+i);
@@ -81,7 +89,7 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
         perror("Error transmitting spi data \n");
     }
 
-    for (int i=0;i<len;i++) {
+    for (unsigned int i=0;i<len;i++) {
         if (!np && dummy[i]!=0) np++;
         else if (np) np++;
         if (np) _spi_addByte(dummy[i]);
@@ -93,11 +101,16 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
     return ret;
 }
 
-void spi_sendIntPacket(uint8_t t, int *v) {
+void spi_sendMsg(struct s_msg *m) {
+    static unsigned char b[4];
+    memcpy(b,m,3);
+    spi_writeBytes(b,3);
+}
+
+void spi_sendIntPacket(uint8_t t, int16_t *v) {
     static unsigned char b[4];
     b[0] = t;
-    int16_t c = *v;
-    memcpy(b+1,&c,2);
+    memcpy(b+1,v,2);
 
     spi_writeBytes(b,3);
 }
@@ -107,7 +120,7 @@ int spi_close() {
 }
 
 int spi_init() {
-    memset(spi_v,0,sizeof(spi_v));
+    spi_buf_c = 0;
 
     fd = open(device, O_RDWR);
     if (fd < 0)

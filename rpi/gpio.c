@@ -188,7 +188,7 @@ int linuxgpio_highpulsepin(int pin, int delay)
 }
 
 int linuxgpio_initpin(int p) {
-    int r, i, pin;
+    int r, i;
 
     for (i=0; i<N_GPIO; i++)
         linuxgpio_fds[i] = -1;
@@ -215,7 +215,7 @@ int linuxgpio_initpin(int p) {
 
 void linuxgpio_close()
 {
-    int i, reset_pin;
+    int i;
 
     for (i=0; i<N_GPIO; i++) {
         if (linuxgpio_fds[i]==-1) continue;

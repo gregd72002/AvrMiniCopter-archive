@@ -1,239 +1,226 @@
-#include <stdint.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <getopt.h>
 #include <signal.h>
+#include <errno.h>
+#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/time.h>
+#include "routines.h"
+#include "spidev.h"
+#include "gpio.h"
+#include <getopt.h>
+#include <sys/file.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#include <linux/types.h>
-#include <linux/spi/spidev.h>
-#include <string.h>
 
-#define DEVOUTFILE "/dev/avroutdev"
-#define DEVINFILE "/dev/avrindev"
+/*
+ * In the included file <sys/un.h> a sockaddr_un is defined as follows
+ * struct sockaddr_un {
+ *  short   sun_family;
+ *  char    sun_path[108];
+ * };
+ */
 
-static const char *device = "/dev/spidev0.0";
-static uint8_t mode = 0;
-static uint8_t bits = 8;
-static uint32_t speed = 1000000;
-static uint32_t mspeed = 1000000;
-static uint16_t delay = 100;
-static int ret;
-static int spifd;
 
-typedef unsigned char byte;
+#include <stdio.h>
 
-int fdin, fdout;
+#define MAX_CLIENTS 5
+#define MSG_SIZE 3
+
+int verbose = 1;
+int echo = 0;
+int background = 0;
 int stop = 0;
-
-byte CRC8(const byte *data, byte len) {
-  byte crc = 0x00;
-  while (len--) {
-    byte extract = *data++;
-    for (byte tempI = 8; tempI; tempI--) {
-      byte sum = (crc ^ extract) & 0x01;
-      crc >>= 1;
-      if (sum) {
-        crc ^= 0x8C;
-      }
-      extract >>= 1;
-    }
-  }
-  return crc;
-}
-
-void _spi_addByte(uint8_t b) {
-    static uint8_t buf[4];
-    static int p = 0;
-
-    buf[p++] = b;
-
-    if (p==4) {
-        int16_t v = 0;
-        //v = buf[2] << 8 | buf [1];
-        if (CRC8(buf,3) == buf[3]) {
-		write(fdin,buf,3);
-        } else printf("CRC failed\n");
-        p = 0;
-    }
-}
-
-int spi_writeBytes(uint8_t *data, unsigned int len) {
-    static int np =0;
-    uint8_t dummy[4];
-    data[len] = CRC8((unsigned char*)(data),len);
-    len++;
-    struct spi_ioc_transfer tr[len];
-    for (int i=0;i<len;i++) {
-        tr[i].tx_buf = (unsigned long)(data+i);
-        //tr[i].rx_buf = (unsigned long)(buf.b+i);
-        tr[i].rx_buf = (unsigned long)(dummy+i);
-        tr[i].len = sizeof(*(data+i));
-        tr[i].speed_hz = speed;
-        tr[i].delay_usecs = delay;
-        tr[i].bits_per_word = bits;
-        tr[i].cs_change = 0;
-    };
-
-    ret = ioctl(spifd, SPI_IOC_MESSAGE(len), &tr);
-    if (ret<0) {
-        perror("Error transmitting spi data \n");
-    }
-
-    for (int i=0;i<len;i++) {
-        if (!np && dummy[i]!=0) np++;
-        else if (np) np++;
-        if (np) _spi_addByte(dummy[i]);
-        if (np==4) np = 0;
-    }
- usleep(5000);
-
-    return ret;
-}
-
-int spi_close() {
-    return close(spifd);
-}
-
-int spi_init() {
-
-    spifd = open(device, O_RDWR);
-    if (spifd < 0)
-        return -1;
-
-    /*
-     * spi mode
-     */
-    ret = ioctl(spifd, SPI_IOC_WR_MODE, &mode);
-    if (ret == -1)
-        return -2;
-    ret = ioctl(spifd, SPI_IOC_RD_MODE, &mode);
-    if (ret == -1)
-        return -20;
-
-    /*
-     * bits per word
-     */
-    ret = ioctl(spifd, SPI_IOC_WR_BITS_PER_WORD, &bits);
-    if (ret == -1)
-        return -3;
-    ret = ioctl(spifd, SPI_IOC_RD_BITS_PER_WORD, &bits);
-    if (ret == -1)
-        return -30;
-    /*
-     * max speed hz
-     */
-    ret = ioctl(spifd, SPI_IOC_WR_MAX_SPEED_HZ, &mspeed);
-    if (ret == -1)
-        return -4;
-    ret = ioctl(spifd, SPI_IOC_RD_MAX_SPEED_HZ, &mspeed);
-    if (ret == -1)
-        return -4;
-
-    return 0;
-}
 
 void catch_signal(int sig)
 {
-	spi_close();
-	close(fdout);
-	close(fdin);
-	unlink(DEVOUTFILE);
-	unlink(DEVINFILE);
+	if (verbose) printf("Signal: %i\n",sig);
 	stop = 1;
 }
 
-int main(int argc, char **argv) {
-	int n,ret,daemonize=0;
-	int t = -1, v;
-
-	    signal(SIGTERM, catch_signal);
-	    signal(SIGINT, catch_signal);
-
-int option;
-while ((option = getopt(argc, argv,"dt:v:")) != -1) {
-	switch (option)  {
-		case 'd': daemonize = 1; break;
-		case 't': t = atoi(optarg); break;
-		case 'v': v = atoi(optarg); break;
-		default: 
-			printf("Error. Use -d to daemonize, -t X for type and -v X for value\n");
-			return -1;
+void process_msg(unsigned char *b) {
+	struct s_msg m;
+	m.t = b[0];
+	m.v = unpacki16(b+1);
+	if (echo) {
+		spi_buf[spi_buf_c++] = m;
+		return;
+	}
+	if (m.t == 255 && m.v == 255) {
+		if (verbose) printf("Reset AVR\n");
+		linuxgpio_initpin(25);
+		linuxgpio_highpulsepin(25,500);
+		linuxgpio_close();
+		//mssleep(1500);
+	} else {
+		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
+		//spi_sendMsg(&m);
 	}
 }
 
-	ret = spi_init();
-	if (ret!=0) {
-		printf("Error initiating SPI!\n");
+void print_usage() {
+	printf("-d run in background\n");
+	printf("-e run echo mode (useful for debugging)\n");
+	printf("-s [path] path to socket to create\n");
+}
+
+int main(int argc, char **argv)
+{
+	int sock[MAX_CLIENTS+1], max_fd;
+	int i,ret;
+	struct sockaddr_un address;
+	unsigned char buf[MAX_CLIENTS][MSG_SIZE];
+	unsigned short buf_c[MAX_CLIENTS];
+	unsigned char bufout[3];
+	struct timeval timeout;
+	fd_set readfds;
+	char sock_path[256] = "/tmp/avrspi.socket";
+
+
+	int option;
+	verbose = 1;
+	background = 0;
+	echo = 0;
+	while ((option = getopt(argc, argv,"des:")) != -1) {
+		switch (option)  {
+			case 'd': background = 1; verbose=0; break;
+			case 's': strcpy(sock_path,optarg); break;
+			case 'e': echo=1; break;
+			default:
+				  print_usage();
+				  return -1;
+		}
+	}
+
+	struct stat st;
+	ret = stat(sock_path, &st);
+	if (ret == 0) {
+		printf("Another instance seems to be running. Closing.\n");
 		return -1;
 	}
 
-	if (t!=-1) {
-		static unsigned char b[4];
-		    b[0] = t;
-		    int16_t c = v;
-		    memcpy(b+1,&c,2);
-		printf("Sending packet t: %i v: %i ... ",b[0],c);
-			spi_writeBytes(b,3);
-			spi_close();
-		printf("Done.\n");
-			return 0;
+
+	signal(SIGTERM, catch_signal);
+	signal(SIGINT, catch_signal);
+
+	for (i=0; i<MAX_CLIENTS+1; i++) { 
+		sock[i] = 0;
+		if (i>0) {
+			buf_c[i-1] = 0;
+		}
 	}
 
-	unlink(DEVOUTFILE);
-	unlink(DEVINFILE);
-	if (mkfifo(DEVOUTFILE, 0666) < 0) {
-		printf("avrspi: Failed to create %s: %m\n", DEVOUTFILE);
-		return -1;
-	}
-	if (chmod(DEVOUTFILE, 0666) < 0) {
-		printf("avrspi: Failed to set permissions on %s: %m\n", DEVOUTFILE);
-		return -1;
-	}
-	if (mkfifo(DEVINFILE, 0666) < 0) {
-		printf("avrspi: Failed to create %s: %m\n", DEVINFILE);
-		return -1;
-	}
-	if (chmod(DEVINFILE, 0666) < 0) {
-		printf("avrspi: Failed to set permissions on %s: %m\n", DEVINFILE);
-		return -1;
+	sock[0] = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sock[0] < 0) {
+		perror("opening socket");
+		exit(1);
 	}
 
-	if (daemonize && daemon(0,1) < 0) {
-		printf("avrspi: Failed to daemonize process: %m\n");
-		return -1;
+
+	/* Create name. */
+	address.sun_family = AF_UNIX;
+	strcpy(address.sun_path, sock_path);
+
+	if (bind(sock[0], (struct sockaddr *) &address, sizeof(struct sockaddr_un))) {
+		perror("binding stream socket");
+		exit(1);
+	}
+	printf("Socket created: %s\n", address.sun_path);
+
+	if (listen(sock[0],3) < 0) {
+		perror("listen");
+		stop=1;
 	}
 
-	fd_set ifds;
-	unsigned char buf[4];
-	if ((fdout = open(DEVOUTFILE, O_RDWR|O_NONBLOCK)) == -1) {
-		printf("avrspi: Failed to open %s: %m\n", DEVOUTFILE);
-		return -1;
+	if (background) {
+		if (daemon(0,1) < 0) { 
+			perror("daemon");
+			return -1;
+		}
+		if (verbose) printf("Running in the background\n");
 	}
-	if ((fdin = open(DEVINFILE, O_RDWR|O_NONBLOCK)) == -1) {
-		printf("avrspi: Failed to open %s: %m\n", DEVINFILE);
-		return -1;
-	}
-	
+
+
+	if (verbose) printf("Starting main loop\n");
 	while (!stop) {
-		FD_ZERO(&ifds);
-		FD_SET(fdout, &ifds);
-		if ((n = select(fdout+1, &ifds, NULL, NULL, NULL)) != 1)
-			continue;
-		ret = read(fdout,buf,3);
-		//if (ret==-1) continue;
-		if (ret!=3) {
-			printf("Error receiving bytes %i!\n",ret);
-			continue;
+		FD_ZERO(&readfds);
+		max_fd = 0;
+		for (i=0;i<MAX_CLIENTS+1;i++) {
+			if (sock[i]<=0) continue;
+			FD_SET(sock[i], &readfds);
+			max_fd = sock[i]>max_fd?sock[i]:max_fd;
 		}
 
-		spi_writeBytes(buf,3);
-		
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 100*1000L;
+		int sel = select( max_fd + 1 , &readfds , NULL , NULL , &timeout);
+		if ((sel<0) && (errno!=EINTR)) {
+			perror("select");
+			stop=1;
+		}
+		//If something happened on the master socket , then its an incoming connection
+		if (!stop && FD_ISSET(sock[0], &readfds)) {
+			if (verbose) printf("Incoming client: ");
+			int t = accept(sock[0], 0, 0);
+			if (t<0) {
+				perror("accept");
+				continue;
+			}
+			for (i=0;i<MAX_CLIENTS;i++)
+				if (sock[i+1] == 0) {
+					sock[i+1] = t;
+					buf_c[i+1] = 0;
+					break;
+				}
+			if (i==MAX_CLIENTS) {
+				printf("AVRSPI: No space in connection pool! Disconnecting client.\n");
+				close(t);
+			}
+		} 
+		for (i=0;(i<MAX_CLIENTS) && (!stop);i++) {
+			if (FD_ISSET(sock[i+1], &readfds)) {
+				ret = read(sock[i+1] , buf[i]+buf_c[i], MSG_SIZE - buf_c[i]); 
+				if (ret < 0) {
+					perror("Reading error");
+					close(sock[i+1]);
+					sock[i] = 0;
+				}
+				else if (ret == 0) {	//client disconnected
+					if (verbose) printf("Client %i disconnected.\n",i);
+					close(sock[i+1]);
+					sock[i+1] = 0;
+				} else { //pending message in buffer
+					buf_c[i] += ret;
+					if (verbose) printf("Received: %i bytes\n",ret);
+					if (buf_c[i] == MSG_SIZE) {
+						process_msg(buf[i]);
+						buf_c[i] = 0;
+						//send out any available message to clients
+						for (int j=0;j<spi_buf_c;j++) {
+							if (verbose) printf("To clients: t: %u v: %i\n",spi_buf[j].t,spi_buf[j].v);
+							bufout[0] = spi_buf[j].t;
+							packi16(bufout+1,spi_buf[j].v);
+							for (int k=0;k<MAX_CLIENTS;k++) {
+								if (sock[k+1]!=0) 
+									ret = send(sock[k+1], bufout, 3, MSG_NOSIGNAL );
+							}
+						}
+						spi_buf_c = 0;
+					}
+				}
+			} 
+		}
+
 	}
 
-	return 0;
+	if (verbose) {
+		printf("closing\n");
+		fflush(NULL);
+	}
+
+	for (i=0;i<MAX_CLIENTS+1;i++)
+		if (sock[i]!=0) close(sock[i]);
+
+	unlink(sock_path);
 }
 
