@@ -46,7 +46,7 @@ void process_msg(unsigned char *b) {
 		//mssleep(1500);
 	} else {
 		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
-		//spi_sendMsg(&m);
+		spi_sendMsg(&m);
 	}
 }
 
