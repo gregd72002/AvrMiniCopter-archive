@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 struct s_msg {
-        uint8_t t;
-        int16_t v;
+        uint8_t t; //type
+        int16_t v; //value
 };
 #endif

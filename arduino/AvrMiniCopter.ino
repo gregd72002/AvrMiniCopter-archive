@@ -20,7 +20,7 @@ Servo myservo[4];
 #define SERVO_BR 3
 
 int m[4]; //calculated motor thrust
-byte FL_PIN,BL_PIN,FR_PIN,BR_PIN;
+byte motor_pin[4]; //FL_PIN,BL_PIN,FR_PIN,BR_PIN;
 
 short mpu_addr;
 unsigned int motor_min;
@@ -99,12 +99,18 @@ void motor_idle() {
 		myservo[i].writeMicroseconds(motor_min);
 }
 
+void initMotor(int v) {
+    myservo[v].attach(motor_pin[v]);
+}
 
-void initMotors() {
-    myservo[SERVO_FL].attach(FL_PIN);
-    myservo[SERVO_BL].attach(BL_PIN);
-    myservo[SERVO_FR].attach(FR_PIN);
-    myservo[SERVO_BR].attach(BR_PIN);
+void testMotor(int m,int v) {
+        myservo[m].writeMicroseconds(v);
+}
+
+
+void armMotors() {
+    for (int i=0;i<4;i++)
+	initMotor(i);
     motor_idle();
 }
 
@@ -148,18 +154,6 @@ void setup() {
 	crc_err = 0;
 }
 
-void motorReattach(int v) {
-    if (myservo[v & 0x000F].attached()) {
-	    myservo[v & 0x000F].detach();
-    	    delay(1000);
-	}
-    myservo[v & 0x000F].attach(v>>4);
-}
-
-void motorTest(int v) {
-        myservo[v & 0x000F].writeMicroseconds(v >> 4);
-}
-
 int process_command() { 
     static unsigned long last_command = millis();
     if (millis() - last_command>900) {
@@ -191,11 +185,10 @@ int process_command() {
 			gyro_orientation = packet.v;
 			break;
 
-	    case 5:	config_count--;	FL_PIN = packet.v; break;
-	    case 6:	config_count--; BL_PIN = packet.v; break;
-	    case 7:	config_count--; FR_PIN = packet.v; break;
-	    case 8:	config_count--; BR_PIN = packet.v; break;
-	    case 9:	config_count--; mpu_addr = packet.v; break;
+	    case 5: case 6: case 7: case 8: 
+		config_count--; motor_pin[packet.t-5] = packet.v; 
+		break;
+	    case 9: config_count--; mpu_addr = packet.v; break;
             case 10: yprt[0] = packet.v; break;
             case 11: yprt[1] = packet.v; break;
             case 12: yprt[2] = packet.v; break;
@@ -273,8 +266,9 @@ int process_command() {
             case 222: pid_s[2].Kp = (float)packet.v/1000.f; config_count--; break; 
             case 223: pid_s[2].Ki = (float)packet.v/1000.f; config_count--; break; 
             case 224: pid_s[2].Kd = (float)packet.v/10000.f; config_count--; break; 
-	    case 250:	motorReattach(packet.v); break;
-	    case 251:	motorTest(packet.v); break;
+	    case 250: case 251: case 252: case 253:
+			testMotor(packet.t-250,packet.v); break;
+ 	    case 254: initMotor(packet.v); break;
 	    case 255: switch (packet.v) {
 			case 0: sendPacket(255,status); break;
 			case 1: status=2; break;
@@ -598,7 +592,7 @@ int check_init() {
     Serial.println("Configuration received.");
 #endif
 
-    initMotors();
+    armMotors();
 
     return 0;
 }

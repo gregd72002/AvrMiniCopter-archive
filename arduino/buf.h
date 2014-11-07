@@ -24,7 +24,7 @@ void buf_init(struct s_buf<T> *b, unsigned char size) {
 
 // returns space left in the buffer
 template <class T>
-int buf_space(struct s_buf<T> *b) {
+unsigned char buf_space(struct s_buf<T> *b) {
         return (b->max - b->size);
 }
 
@@ -38,7 +38,7 @@ void buf_push(struct s_buf<T> *b, T v) {
 
 template <class T>
 T buf_pop(struct s_buf<T> *b) {
-        static float ret;
+        static T ret;
 
         if (!b->size) return 0;
 

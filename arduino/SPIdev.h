@@ -4,7 +4,7 @@
 #include <SPI.h>
 #include "crc8.h"
 
-#define BUF_SIZE 64 
+#define BUF_SIZE 64 //this is 16 msg (each msg has 4 bytes) 
 
 volatile byte SPI_iptr = 0;                                                       
 volatile byte SPI_isize = 0;                                                      

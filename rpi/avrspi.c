@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/un.h>
+#include <netinet/in.h>
 #include <sys/time.h>
 #include "routines.h"
 #include "spidev.h"
@@ -12,15 +12,7 @@
 #include <getopt.h>
 #include <sys/file.h>
 #include <sys/stat.h>
-
-/*
- * In the included file <sys/un.h> a sockaddr_un is defined as follows
- * struct sockaddr_un {
- *  short   sun_family;
- *  char    sun_path[108];
- * };
- */
-
+#include <strings.h>
 
 #include <stdio.h>
 
@@ -61,44 +53,36 @@ void process_msg(unsigned char *b) {
 void print_usage() {
 	printf("-d run in background\n");
 	printf("-e run echo mode (useful for debugging)\n");
-	printf("-s [path] path to socket to create\n");
+	printf("-p [port] port to listen on (defaults to 1030)\n");
 }
 
 int main(int argc, char **argv)
 {
 	int sock[MAX_CLIENTS+1], max_fd;
 	int i,ret;
-	struct sockaddr_un address;
+	int portno = 1030;
+	struct sockaddr_in address;
 	unsigned char buf[MAX_CLIENTS][MSG_SIZE];
 	unsigned short buf_c[MAX_CLIENTS];
-	unsigned char bufout[3];
+	unsigned char bufout[4];
 	struct timeval timeout;
 	fd_set readfds;
-	char sock_path[256] = "/tmp/avrspi.socket";
 
 
 	int option;
 	verbose = 1;
 	background = 0;
 	echo = 0;
-	while ((option = getopt(argc, argv,"des:")) != -1) {
+	while ((option = getopt(argc, argv,"dep:")) != -1) {
 		switch (option)  {
 			case 'd': background = 1; verbose=0; break;
-			case 's': strcpy(sock_path,optarg); break;
+			case 'p': portno = atoi(optarg);  break;
 			case 'e': echo=1; break;
 			default:
 				  print_usage();
 				  return -1;
 		}
 	}
-
-	struct stat st;
-	ret = stat(sock_path, &st);
-	if (ret == 0) {
-		printf("Another instance seems to be running. Closing.\n");
-		return -1;
-	}
-
 
 	signal(SIGTERM, catch_signal);
 	signal(SIGINT, catch_signal);
@@ -110,7 +94,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	sock[0] = socket(AF_UNIX, SOCK_STREAM, 0);
+	sock[0] = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock[0] < 0) {
 		perror("opening socket");
 		exit(1);
@@ -118,14 +102,16 @@ int main(int argc, char **argv)
 
 
 	/* Create name. */
-	address.sun_family = AF_UNIX;
-	strcpy(address.sun_path, sock_path);
-
-	if (bind(sock[0], (struct sockaddr *) &address, sizeof(struct sockaddr_un))) {
+	bzero((char *) &address, sizeof(address));
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(portno);
+	
+	if (bind(sock[0], (struct sockaddr *) &address, sizeof(struct sockaddr_in))) {
 		perror("binding stream socket");
 		exit(1);
 	}
-	printf("Socket created: %s\n", address.sun_path);
+	printf("Socket created on port %i\n", portno);
 
 	if (listen(sock[0],3) < 0) {
 		perror("listen");
@@ -160,7 +146,6 @@ int main(int argc, char **argv)
 		}
 		//If something happened on the master socket , then its an incoming connection
 		if (!stop && FD_ISSET(sock[0], &readfds)) {
-			if (verbose) printf("Incoming client: ");
 			int t = accept(sock[0], 0, 0);
 			if (t<0) {
 				perror("accept");
@@ -168,6 +153,7 @@ int main(int argc, char **argv)
 			}
 			for (i=0;i<MAX_CLIENTS;i++)
 				if (sock[i+1] == 0) {
+					if (verbose) printf("Incoming client: %i\n",i);
 					sock[i+1] = t;
 					buf_c[i+1] = 0;
 					break;
@@ -198,11 +184,18 @@ int main(int argc, char **argv)
 						//send out any available message to clients
 						for (int j=0;j<spi_buf_c;j++) {
 							if (verbose) printf("To clients: t: %u v: %i\n",spi_buf[j].t,spi_buf[j].v);
-							bufout[0] = spi_buf[j].t;
-							packi16(bufout+1,spi_buf[j].v);
+							bufout[0] = 0;
+							bufout[1] = spi_buf[j].t;
+							packi16(bufout+2,spi_buf[j].v);
 							for (int k=0;k<MAX_CLIENTS;k++) {
-								if (sock[k+1]!=0) 
-									ret = send(sock[k+1], bufout, 3, MSG_NOSIGNAL );
+								if (sock[k+1]!=0) { 
+									ret = send(sock[k+1], bufout, 4, MSG_NOSIGNAL );
+									if (ret == -1) {
+										if (verbose) printf("Lost connection to client %i.\n",k);
+										close(sock[k+1]);
+										sock[k+1] = 0;
+									}
+								}
 							}
 						}
 						spi_buf_c = 0;
@@ -213,6 +206,14 @@ int main(int argc, char **argv)
 
 	}
 
+	bufout[0] = 1; //disconnect msg
+	for (int k=0;k<MAX_CLIENTS;k++) {
+		if (sock[k+1]!=0) 
+			send(sock[k+1], bufout, 4, MSG_NOSIGNAL );
+	}
+
+	mssleep(1000);
+	
 	if (verbose) {
 		printf("closing\n");
 		fflush(NULL);
@@ -221,6 +222,5 @@ int main(int argc, char **argv)
 	for (i=0;i<MAX_CLIENTS+1;i++)
 		if (sock[i]!=0) close(sock[i]);
 
-	unlink(sock_path);
 }
 

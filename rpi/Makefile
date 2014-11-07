@@ -14,11 +14,12 @@ INSTALL=install
 OBJ_AVRCONTROLLER=avrcontroller.o mpu.o flightlog.o bmpsensor/libbs.a libs/libi2cdev.a routines.o config.o ps3controller.o
 OBJ_AVRSPI=avrspi.o routines.o gpio.o spidev.o
 OBJ_AVRSPI_CMD=avrspi_cmd.o routines.o
+OBJ_AVRSPI_BUF=avrspi_buf.o routines.o
 
 %.o: %.c                                                                         
 	$(CXX) -c $(CXXFLAGS) $(CXX_OPTS) $< -o $@ 
 
-all: avrcontroller avrspi avrspi_cmd
+all: avrcontroller avrspi avrspi_cmd avrspi_buf
 
 avrcontroller: $(OBJ_AVRCONTROLLER)
 	$(CC) $(CFLAGS) $(OBJ_AVRCONTROLLER) -o avrcontroller $(LDFLAGS) $(CC_OPTS) 
@@ -28,6 +29,9 @@ avrspi: $(OBJ_AVRSPI)
 
 avrspi_cmd: $(OBJ_AVRSPI_CMD)
 	$(CC) $(CFLAGS) $(OBJ_AVRSPI_CMD) -o avrspi_cmd $(LDFLAGS) $(CC_OPTS) 
+
+avrspi_buf: $(OBJ_AVRSPI_BUF)
+	$(CC) $(CFLAGS) $(OBJ_AVRSPI_BUF) -o avrspi_buf $(LDFLAGS) $(CC_OPTS) 
 
 receiver/libreceiver.a:
 	$(MAKE) -C receiver/ 
@@ -49,5 +53,6 @@ clean:
 	cd libs/i2cdev && $(MAKE) clean
 	rm -rf avrcontroller 
 	rm -rf avrspi_cmd
+	rm -rf avrspi_buf
 	rm -rf avrspi 
 	rm -rf *.o *~ *.mod
