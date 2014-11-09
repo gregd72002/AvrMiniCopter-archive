@@ -22,9 +22,8 @@ Servo myservo[4];
 int m[4]; //calculated motor thrust
 byte motor_pin[4]; //FL_PIN,BL_PIN,FR_PIN,BR_PIN;
 
-short mpu_addr;
-unsigned int motor_min;
-int inflight_threshold;
+short mpu_addr; //136
+unsigned int motor_pwm[2]; //min, inflight threshold;
 
 struct s_pid pid_r[3];
 struct s_pid pid_s[3];
@@ -38,28 +37,28 @@ struct s_pid pid_accel, pid_alt, pid_vz;
 struct s_buf<float> alt_buf;
 
 float ld;
-float accel_z;
+float accel_z = 0.f;
 
-float accel_err;
-float accel_corr;
-float alt_corr;
-float vz_inc;
-float alt_err;
-float alt_base;
+float accel_err = 0.f;
+float accel_corr = 0.f;
+float alt_corr = 0.f;
+float vz_inc = 0.f;
+float alt_err = 0.f;
+float alt_base = 0.f;
 
-float alt;
-float vz;
-float pos_err, vz_target;
+float alt = 0.f;
+float vz = 0.f;
+float pos_err = 0.f, vz_target = 0.f;
 
 float bc,bc1,bc2,bc3;
 
-int alt_hold;
+int alt_hold = 0;
 float alt_hold_target;
 int alt_hold_throttle;
 
 
 
-unsigned char loop_count;
+unsigned char loop_count = 0;
 #ifdef DEBUG
 unsigned int c = 0; //cumulative number of successful MPU/DMP reads
 unsigned int np = 0; //cumulative number of MPU/DMP reads that brought no packet back
@@ -68,7 +67,7 @@ unsigned int err_o = 0; //cumulative number of MPU/DMP reads that had overflow b
 #endif
 
 
-byte status;
+byte status = 0;
 byte fly_mode;
 byte log_mode;
 unsigned short gyro_orientation;
@@ -80,12 +79,12 @@ byte packet[4];
 int yprt[4] = {0,0,0,0};
 signed char trim[3] = {0,0,0}; //0-pitch; 1-roll
 
-unsigned int mpu_err;
-unsigned int rec_err;
+unsigned int mpu_err = 0;
+unsigned int rec_err = 0;
 
 void motor_idle() {
 	for (int i=0;i<4;i++)
-		myservo[i].writeMicroseconds(motor_min);
+		myservo[i].writeMicroseconds(motor_pwm[0]);
 }
 
 void initMotor(int v) {
@@ -104,8 +103,6 @@ void armMotors() {
 }
 
 void sendPacket(byte t, int v) {
-	//packet.t = t;
-	//packet.v = v;
 	packet[0] = t;
 	packet[1] = v & 0x00FF;
 	packet[2] = (v & 0xFF00) >> 8;
@@ -123,6 +120,13 @@ void initAVR() {
 	pid_init(&pid_alt);
 	buf_init(&alt_buf,15);
 #endif
+	bc = 0.5f;
+	bc1 = 0.6f;
+	bc2 = 0.12f;
+	bc3 = 0.1f;
+
+	mpu_addr = 136;
+
 	yaw_target = 0.f;
 	loop_count = 0;
 	status = 0;
@@ -146,11 +150,6 @@ void initAVR() {
 
 	alt = 0.f;
 	vz = 0.f;
-
-	bc = 0.5f;
-	bc1 = 0.6f;
-	bc2 = 0.12f;
-	bc3 = 0.1f; 
 }
 
 void setup() {
@@ -205,7 +204,7 @@ int process_command() {
 			case 11: yprt[1] = v; break;
 			case 12: yprt[2] = v; break;
 			case 13: yprt[3] = v; break;
-				 //#ifdef ALTHOLD
+#ifdef ALTHOLD
 			case 14: //altitude reading in cm - convert it into altitude error 
 				 static float b;
 				 if (!buf_space(&alt_buf)) b = buf_pop(&alt_buf); //buffer full
@@ -214,7 +213,6 @@ int process_command() {
 				 break;
 			case 15:   alt_hold = v; 
 				   alt_hold_throttle = yprt[3]; 
-				   alt_hold_target = alt;
 				   break;
 			case 16: 
 				   if (v>MAX_ALT_INC) alt_hold_target += MAX_ALT_INC; 
@@ -222,9 +220,9 @@ int process_command() {
 				   else alt_hold_target += v;
 				   if (alt_hold_target>MAX_ALT) alt_hold_target=MAX_ALT;
 				   break;
-				   //#endif
-			case 17: motor_min = v; break;
-			case 18: inflight_threshold = v; break;
+#endif
+			case 17: motor_pwm[0] = v; break;
+			case 18: motor_pwm[1] = v; break;
 			case 20: trim[0] = v; break;
 			case 21: trim[1] = v; break;
 			case 22: trim[2] = v; break;
@@ -325,6 +323,7 @@ void log_altitude() {
 	sendPacket(30,alt_hold_target);
 	sendPacket(31,alt);
 	sendPacket(32,vz);
+//	sendPacket(33,accel_err*100.f);
 }
 #endif
 
@@ -503,6 +502,8 @@ void controller_loop() {
 	pid_update(&pid_accel,accel_err,loop_s);
 	if (alt_hold) {
 		yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
+	} else {
+		alt_hold_target = alt;
 	} 
 #endif
 	if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
@@ -546,18 +547,18 @@ void controller_loop() {
 
 	log();
 
-	if (yprt[3] < inflight_threshold) {
+	if (yprt[3] < motor_pwm[1]) {
 		motor_idle();
 		yaw_target = mympu.ypr[0];
 		for (int i=0;i<3;i++) {                                              
-			pid_r[i]._KiTerm = 0.0f;                                  
-			pid_s[i]._KiTerm = 0.0f;                                  
+			pid_reset(&pid_r[i]);
+			pid_reset(&pid_s[i]);
 		}                                                                    
 		return;
 	}
 
 	for (int i=0;i<4;i++) { 
-		m[i] = m[i]<inflight_threshold?inflight_threshold:m[i];
+		m[i] = m[i]<motor_pwm[1]?motor_pwm[1]:m[i];
 		myservo[i].writeMicroseconds(m[i]);
 	}
 

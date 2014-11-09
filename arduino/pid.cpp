@@ -21,9 +21,7 @@ int pid_init(struct s_pid *pid) {
 }
 
 void pid_reset(struct s_pid *pid) {
-    pid->_KiTerm = pid->value;
-    if (pid->_KiTerm>pid->imax) pid->_KiTerm=pid->imax;
-    else if (pid->_KiTerm<-pid->imax) pid->_KiTerm=-pid->imax;
+    pid->_KiTerm = 0.f;	
 }
 
 void pid_update(struct s_pid *pid, float input, float dt_s) {

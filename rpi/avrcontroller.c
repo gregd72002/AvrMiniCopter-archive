@@ -50,6 +50,7 @@ struct sockaddr_in address;
 struct hostent *server;
 
 int verbose = 0;
+int nocontroller = 0;
 
 int sendMsg(int t, int v) {
 	static unsigned char buf[3];
@@ -202,7 +203,7 @@ void do_adjustments() {
 			break;
 		case 3: 
 			stop=1;
-		   	reset_avr();
+			reset_avr();
 			break;
 		case 12:
 			if (rec_setting) rec_setting = 0;
@@ -277,8 +278,8 @@ void log5() {
 }
 
 void log5_print() {
-	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\n",
-			flight_time,avr_s[30],avr_s[31],avr_s[32]);
+	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\taccel_err: %2.2f\n",
+			flight_time,avr_s[30],avr_s[31],avr_s[32],avr_s[33]/100.f);
 }
 
 void log100_print() {
@@ -346,8 +347,6 @@ void log4_print() {
 
 unsigned long c = 0,k = 0;
 
-//#define NOCONTROLLER 1
-
 void init() {
 	//feeds all config and waits for calibration
 	int prev_status = avr_s[255];
@@ -391,23 +390,23 @@ void loop() {
 	ts = t1 = t2;
 	if (verbose) printf("Starting main loop...\n");
 	while (1 && !err && !stop) {
-#ifndef NOCONTROLLER
-		ret = rec_update(); 
-		// 0 - no update but read ok
-		// 1 - update
-		if (ret < 0) {
-			err = 1;
-			printf("Receiver reading error: [%s]\n",strerror(ret));
-			return;
+		if (!nocontroller) {
+			ret = rec_update(); 
+			// 0 - no update but read ok
+			// 1 - update
+			if (ret < 0) {
+				err = 1;
+				printf("Receiver reading error: [%s]\n",strerror(ret));
+				return;
+			}
+		} else {
+			ret = 0;
+			rec.aux = -1;
+			rec.yprt[0] = 0;
+			rec.yprt[1] = 0;
+			rec.yprt[2] = 0;
+			rec.yprt[2] = 1000;
 		}
-#else
-		ret = 0;
-		rec.aux = -1;
-		rec.yprt[0] = 0;
-		rec.yprt[1] = 0;
-		rec.yprt[2] = 0;
-		rec.yprt[2] = 1000;
-#endif
 
 		if (alt_hold && abs(rec.yprt[3]) > (config.rec_t[1]-50)) {
 			alt_hold = 0;
@@ -484,9 +483,10 @@ void loop() {
 }
 
 void print_usage() {
-	printf("-v - verbose mode\n");
+	printf("-v [level] - verbose mode\n");
 	printf("-a [addr] - address to connect to (defaults to 127.0.0.1)\n");
 	printf("-p [port] - port to connect to (default to 1030)\n");
+	printf("-f - do not initialize joystic\n");
 }
 
 int main(int argc, char **argv) {
@@ -496,9 +496,10 @@ int main(int argc, char **argv) {
 
 	int option;
 	verbose = 0;
-	while ((option = getopt(argc, argv,"v:a:p:")) != -1) {
+	while ((option = getopt(argc, argv,"v:a:p:f")) != -1) {
 		switch (option)  {
 			case 'v': verbose=atoi(optarg); break;
+			case 'f': nocontroller = 1; break;
 			case 'a': strcpy(sock_path,optarg); break;
 			case 'p': portno = atoi(optarg); break;
 			default:
@@ -560,13 +561,13 @@ int main(int argc, char **argv) {
 		return -1;                                                               
 	}   
 
-#ifndef NOCONTROLLER
-	ret=rec_open();
-	if (ret<0) {
-		printf("Failed to initiate receiver! [%s]\n", strerror(ret));	
-		return -1;
+	if (!nocontroller) {
+		ret=rec_open();
+		if (ret<0) {
+			printf("Failed to initiate receiver! [%s]\n", strerror(ret));	
+			return -1;
+		}
 	}
-#endif
 
 	ret=bs_open();
 	if (ret<0) {
