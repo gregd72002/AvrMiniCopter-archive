@@ -20,6 +20,7 @@
 #define MSG_SIZE 3
 
 int verbose = 1;
+int spi = 1;
 int echo = 0;
 int background = 0;
 int stop = 0;
@@ -37,10 +38,9 @@ void process_msg(unsigned char *b) {
 	struct s_msg m;
 	m.t = b[0];
 	m.v = unpacki16(b+1);
-	if (echo) {
+	if (echo) 
 		spi_buf[spi_buf_c++] = m;
-		return;
-	}
+
 	if (m.t == 255 && m.v == 255) {
 		if (verbose) printf("Reset AVR\n");
 		linuxgpio_initpin(25);
@@ -49,7 +49,7 @@ void process_msg(unsigned char *b) {
 		//mssleep(1500);
 	} else {
 		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
-		spi_sendIntPacket(m.t,&m.v);
+		if (spi) spi_sendIntPacket(m.t,&m.v);
 		clock_gettime(CLOCK_REALTIME, &last_msg);	
 	}
 }
@@ -57,6 +57,7 @@ void process_msg(unsigned char *b) {
 void print_usage() {
 	printf("-d run in background\n");
 	printf("-e run echo mode (useful for debugging)\n");
+	printf("-f do not do SPI (useful for debugging)\n");
 	printf("-p [port] port to listen on (defaults to 1030)\n");
 }
 
@@ -78,10 +79,11 @@ int main(int argc, char **argv)
 	verbose = 1;
 	background = 0;
 	echo = 0;
-	while ((option = getopt(argc, argv,"dep:")) != -1) {
+	while ((option = getopt(argc, argv,"dep:f")) != -1) {
 		switch (option)  {
 			case 'd': background = 1; verbose=0; break;
 			case 'p': portno = atoi(optarg);  break;
+			case 'f': spi=0; break;
 			case 'e': echo=1; break;
 			default:
 				  print_usage();
@@ -132,7 +134,7 @@ int main(int argc, char **argv)
 	}
 
 
-	if (!echo) {
+	if (spi) {
 		ret = spi_init();
 		if (ret < 0) {
 			printf("Error initiating SPI! %i\n",ret);
@@ -224,7 +226,7 @@ int main(int argc, char **argv)
 		dt = TimeSpecDiff(&time_now,&last_msg);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 		if (dt_ms>50) {
-			spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
+			if (spi) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
 			clock_gettime(CLOCK_REALTIME, &last_msg);	
 		}
 	}
