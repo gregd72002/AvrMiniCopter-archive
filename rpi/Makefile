@@ -47,6 +47,7 @@ install:
 	$(INSTALL) -m 755 avrcontroller $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi_cmd $(DESTDIR)/usr/local/bin/
+	$(INSTALL) -m 755 avrspi_buf $(DESTDIR)/usr/local/bin/
 
 clean:
 	cd bmpsensor && $(MAKE) clean
