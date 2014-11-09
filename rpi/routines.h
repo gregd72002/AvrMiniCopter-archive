@@ -17,4 +17,6 @@ unsigned int unpacki16(unsigned char *buf);
 
 void mssleep(unsigned int ms); 
 
+struct timespec *TimeSpecDiff(struct timespec *ts1, struct timespec *ts2);
+
 #endif

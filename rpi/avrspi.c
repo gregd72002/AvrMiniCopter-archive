@@ -24,6 +24,9 @@ int echo = 0;
 int background = 0;
 int stop = 0;
 
+struct timespec time_now,last_msg;
+struct timespec *dt;
+
 void catch_signal(int sig)
 {
 	if (verbose) printf("Signal: %i\n",sig);
@@ -46,7 +49,8 @@ void process_msg(unsigned char *b) {
 		//mssleep(1500);
 	} else {
 		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
-		spi_sendMsg(&m);
+		spi_sendIntPacket(m.t,&m.v);
+		clock_gettime(CLOCK_REALTIME, &last_msg);	
 	}
 }
 
@@ -67,7 +71,8 @@ int main(int argc, char **argv)
 	unsigned char bufout[4];
 	struct timeval timeout;
 	fd_set readfds;
-
+	struct s_msg dummy_msg = {t: 255, v: 254};
+	long dt_ms = 0;
 
 	int option;
 	verbose = 1;
@@ -106,7 +111,7 @@ int main(int argc, char **argv)
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(portno);
-	
+
 	if (bind(sock[0], (struct sockaddr *) &address, sizeof(struct sockaddr_in))) {
 		perror("binding stream socket");
 		exit(1);
@@ -127,6 +132,16 @@ int main(int argc, char **argv)
 	}
 
 
+	if (!echo) {
+		ret = spi_init();
+		if (ret < 0) {
+			printf("Error initiating SPI! %i\n",ret);
+			stop = 1;
+		}
+	}
+
+	clock_gettime(CLOCK_REALTIME, &last_msg);
+
 	if (verbose) printf("Starting main loop\n");
 	while (!stop) {
 		FD_ZERO(&readfds);
@@ -138,7 +153,7 @@ int main(int argc, char **argv)
 		}
 
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 100*1000L;
+		timeout.tv_usec = 100*1000L; //100ms
 		int sel = select( max_fd + 1 , &readfds , NULL , NULL , &timeout);
 		if ((sel<0) && (errno!=EINTR)) {
 			perror("select");
@@ -169,42 +184,52 @@ int main(int argc, char **argv)
 				if (ret < 0) {
 					perror("Reading error");
 					close(sock[i+1]);
-					sock[i] = 0;
+					sock[i+1] = 0;
 				}
 				else if (ret == 0) {	//client disconnected
 					if (verbose) printf("Client %i disconnected.\n",i);
 					close(sock[i+1]);
 					sock[i+1] = 0;
-				} else { //pending message in buffer
+				} else { //pending message in buffer - forward to SPI
 					buf_c[i] += ret;
 					if (verbose) printf("Received: %i bytes\n",ret);
 					if (buf_c[i] == MSG_SIZE) {
 						process_msg(buf[i]);
 						buf_c[i] = 0;
-						//send out any available message to clients
-						for (int j=0;j<spi_buf_c;j++) {
-							if (verbose) printf("To clients: t: %u v: %i\n",spi_buf[j].t,spi_buf[j].v);
-							bufout[0] = 0;
-							bufout[1] = spi_buf[j].t;
-							packi16(bufout+2,spi_buf[j].v);
-							for (int k=0;k<MAX_CLIENTS;k++) {
-								if (sock[k+1]!=0) { 
-									ret = send(sock[k+1], bufout, 4, MSG_NOSIGNAL );
-									if (ret == -1) {
-										if (verbose) printf("Lost connection to client %i.\n",k);
-										close(sock[k+1]);
-										sock[k+1] = 0;
-									}
-								}
-							}
-						}
-						spi_buf_c = 0;
 					}
 				}
-			} 
+			}
 		}
+		//send out any available message to clients
+		for (int j=0;j<spi_buf_c;j++) {
+			if (verbose) printf("To clients: t: %u v: %i\n",spi_buf[j].t,spi_buf[j].v);
+			bufout[0] = 0;
+			bufout[1] = spi_buf[j].t;
+			packi16(bufout+2,spi_buf[j].v);
+			for (int k=0;k<MAX_CLIENTS;k++) {
+				if (sock[k+1]!=0) { 
+					ret = send(sock[k+1], bufout, 4, MSG_NOSIGNAL );
+					if (ret == -1) {
+						if (verbose) printf("Lost connection to client %i.\n",k);
+						close(sock[k+1]);
+						sock[k+1] = 0;
+					}
+				}
+			}
+		}
+		spi_buf_c = 0;
 
+		//ping if needed
+		clock_gettime(CLOCK_REALTIME, &time_now);
+		dt = TimeSpecDiff(&time_now,&last_msg);
+		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
+		if (dt_ms>50) {
+			spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
+			clock_gettime(CLOCK_REALTIME, &last_msg);	
+		}
 	}
+
+	if (echo) spi_close();
 
 	bufout[0] = 1; //disconnect msg
 	for (int k=0;k<MAX_CLIENTS;k++) {
@@ -213,7 +238,7 @@ int main(int argc, char **argv)
 	}
 
 	mssleep(1000);
-	
+
 	if (verbose) {
 		printf("closing\n");
 		fflush(NULL);

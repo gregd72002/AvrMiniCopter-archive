@@ -27,14 +27,14 @@ int background = 0;
 
 unsigned char obuf[4096];
 unsigned char obuf_size = 0;
-unsigned int max_obuf_size = 768; //3 * 256
+unsigned int max_obuf_size = 1536; //3 * 512 
 
 void print_usage() {
 	printf("-a [address] address to use (default to 127.0.0.1)\n");
 	printf("-p [port] port to connect to (defaults to 1030)\n");
 	printf("-l [port] port to listen on (defaults to 1031)\n");
 	printf("-b for background operation\n");
-	printf("-c [size] number of msg to store (defaults to 256)\n");
+	printf("-c [size] number of msg to store (defaults to 512)\n");
 }
 
 void catch_signal(int sig)

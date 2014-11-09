@@ -1,5 +1,5 @@
 CXX=g++
-CXX_OPTS= -Wall -g -O2 -DDEBUG
+CXX_OPTS= -Wall -g -O2 -DDEBUG1
 CXXFLAGS=$(CXX_OPTS)
 
 CC=cc

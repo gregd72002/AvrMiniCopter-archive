@@ -102,9 +102,7 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
 }
 
 void spi_sendMsg(struct s_msg *m) {
-    static unsigned char b[4];
-    memcpy(b,m,3);
-    spi_writeBytes(b,3);
+    spi_sendIntPacket(m->t,&m->v);
 }
 
 void spi_sendIntPacket(uint8_t t, int16_t *v) {

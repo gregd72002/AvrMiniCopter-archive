@@ -6,8 +6,10 @@
 #include <errno.h>
 #include <string.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/socket.h>
-#include <sys/un.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <stdlib.h>
 #include <time.h>
 #include <sched.h>
@@ -23,7 +25,6 @@
 #include "routines.h"
 #include "msg.h"
 
-char sock_path[256] = "/tmp/avrspi.socket";
 
 int ret;
 int err = 0;
@@ -42,8 +43,11 @@ int alt_hold = 0;
 int throttle_hold = 0;
 int throttle_target = 0;
 
-int sock;
-struct sockaddr_un address;
+int sock = 0;
+char sock_path[256] = "127.0.0.1";
+int portno = 1030;
+struct sockaddr_in address;
+struct hostent *server;
 
 int verbose = 0;
 
@@ -59,22 +63,45 @@ int sendMsg(int t, int v) {
 }
 
 void recvMsg() {
-	static int i=0,ret=0;
-	static unsigned char buf[3];
+	static int sel=0,i=0,ret=0;
+	static unsigned char buf[4];
 	static struct s_msg m;
+
+	static fd_set fds;
+	static struct timeval timeout;
+
 	do {
-		ret = read(sock,buf+i,3-i);
-		if (ret>0) {
-			i+=ret;
-			if (i==3) {
-				m.t = buf[0];
-				m.v = unpacki16(buf+1);
-				avr_s[m.t] = m.v;
-				if (verbose) printf("Received t: %u v: %i\n",m.t,m.v);
-				i = 0;
+		FD_ZERO(&fds);
+		FD_SET(sock,&fds);
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 0;
+		sel = select( sock + 1 , &fds , NULL , NULL , &timeout);
+		if ((sel<0) && (errno!=EINTR)) {
+			perror("select");
+			stop=1;
+		}
+		else if (sel && !stop && FD_ISSET(sock, &fds)) {
+			ret = read(sock,buf+i,4-i);
+			if (ret<0) {
+				perror("reading");
+				stop = 1;
+			}
+			else {
+				i+=ret;
+				if (i==4) {
+					if (buf[0] == 1) {
+						if (verbose) printf("Disconnect request.\n");
+						stop = 1;	
+					} else {
+						m.t = buf[1];
+						m.v = unpacki16(buf+2);
+						avr_s[m.t] = m.v;
+						i = 0;
+					}
+				}
 			}
 		}
-	} while (ret>0);
+	} while (!stop && sel && ret>0); //no error happened; select picked up socket state change; read got some data back
 }
 
 void sendTrims() {
@@ -85,10 +112,6 @@ void sendTrims() {
 
 
 void sendConfig() {
-
-	int config_count = 56;
-	sendMsg(1,config_count);
-
 	sendMsg(2,config.log_t);
 
 	sendMsg(3,mode);
@@ -100,31 +123,37 @@ void sendConfig() {
 
 	sendMsg(17,config.rec_t[0]);
 	sendMsg(18,config.rec_t[2]);
-	//6
+
 	for (int i=0;i<4;i++) 
 		sendMsg(5+i,config.motor_pin[i]);
-	//10
+
+	sendMsg(69,config.baro_f);
 	//PIDS
 	for (int i=0;i<3;i++) 
 		for (int j=0;j<5;j++) {
 			sendMsg(100+i*10+j,config.r_pid[i][j]);
 			sendMsg(200+i*10+j,config.s_pid[i][j]);
 		}
-	//40
+
 	for (int i=0;i<5;i++) { 
 		sendMsg(70+i,config.accel_pid[i]);
 		sendMsg(80+i,config.alt_pid[i]);
 		sendMsg(90+i,config.vz_pid[i]);
 	}
-	//55
+
 	sendMsg(130,config.a_pid[0]);
-	//56
-	//END PIDS
+
 	int config_done = 1;
 	sendMsg(255,config_done);
 	mssleep(1000);
 
 }
+
+void reset_avr() {
+	sendMsg(255,255);
+	mssleep(1000);
+}
+
 
 void checkPIDs() {
 	for (int i=0;i<3;i++) {
@@ -142,7 +171,7 @@ void do_adjustments() {
 	if (rec.aux<0) return;
 
 	static int adj3 = 1; //for trim
-	static int adj4 = 100; //for altitude (mm)
+	static int adj4 = 25; //for altitude (mm)
 
 	static char str[128];
 
@@ -172,19 +201,8 @@ void do_adjustments() {
 			if (rec.yprt[3]<config.rec_t[2]) {flog_save(); config_save(); sync(); fflush(NULL);}
 			break;
 		case 3: 
-			if (rec.yprt[3]<config.rec_t[2]) {
-				stop=1;
-				/*
-				   reset_avr();
-				   ret=config_open("/var/local/rpicopter.config");
-				   mode = 0;
-				   alt_hold = 0;
-				   throttle_hold = 0;
-				   sendConfig();
-				   sendTrims();
-				   bs_reset();
-				 */
-			}
+			stop=1;
+		   	reset_avr();
 			break;
 		case 12:
 			if (rec_setting) rec_setting = 0;
@@ -229,8 +247,6 @@ void do_adjustments() {
 			{
 				mode++;
 				if (mode==2) mode=0;
-				int t = 1;
-				sendMsg(1,t);
 				sendMsg(3,mode);
 			}
 			//}
@@ -243,11 +259,6 @@ void do_adjustments() {
 
 } 
 
-void reset_avr() {
-	sendMsg(255,255);
-	mssleep(1000);
-}
-
 void catch_signal(int sig)
 {
 	printf("signal: %i\n",sig);
@@ -256,33 +267,6 @@ void catch_signal(int sig)
 
 long dt_ms = 0;
 static struct timespec ts,t1,t2,*dt;
-
-struct timespec *TimeSpecDiff(struct timespec *ts1, struct timespec *ts2)
-{
-	static struct timespec ts;
-	ts.tv_sec = ts1->tv_sec - ts2->tv_sec;
-	ts.tv_nsec = ts1->tv_nsec - ts2->tv_nsec;
-	if (ts.tv_nsec < 0) {
-		ts.tv_sec--;
-		ts.tv_nsec += 1000000000;
-	}
-	return &ts;
-}
-
-void log() {
-	flog_push(6, 
-			(float)t2.tv_sec-ts.tv_sec
-			,bs.alt,bs.t
-			,avr_s[10]/10.0f,avr_s[11]/100.0f,avr_s[12]/100.0f
-		 );
-#ifdef DEBUG
-	//printf("T: %li\tA: %2.1f\tT: %2.1f\t\talt: %2.1f\t\tvz: %2.2f\t\the: %2.1f\n",t2.tv_sec-ts.tv_sec,bs.alt,bs.t,avr_s[10]/10.0f,avr_s[11]/100.0f,avr_s[12]/100.0f);
-	printf("T: %li\tdp: %2.2f\tdr: %2.2f\t\tdip: %2.1f\tdir: %2.2f\n",
-			t2.tv_sec-ts.tv_sec
-			,avr_s[0x20]/100.0f,avr_s[0x21]/100.0f,avr_s[0x22]/100.0f,avr_s[0x23]/100.0f
-	      );
-#endif
-}
 
 void log5() {
 	flog_push(5, 
@@ -293,8 +277,13 @@ void log5() {
 }
 
 void log5_print() {
-	printf("T: %li\talt: %i\tv_est: %i\th_est: %i\n",
+	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\n",
 			flight_time,avr_s[30],avr_s[31],avr_s[32]);
+}
+
+void log100_print() {
+	printf("T: %li\tvz: %i\tpos_err: %i\taccel_err: %i\tpid_alt: %i\tpid_vz: %i\tpid_accel: %i\n",
+			flight_time,avr_s[100],avr_s[101],avr_s[102],avr_s[103],avr_s[104],avr_s[105]);
 }
 
 void log3() {
@@ -355,48 +344,52 @@ void log4_print() {
 }
 
 
-#define MAX_SAFE_STACK (MAX_LOG*MAX_VALS + 64*1024)
-void stack_prefault(void) {
-
-	unsigned char dummy[MAX_SAFE_STACK];
-
-	memset(dummy, 0, MAX_SAFE_STACK);
-	return;
-}
-
 unsigned long c = 0,k = 0;
 
 //#define NOCONTROLLER 1
-void loop() {
+
+void init() {
+	//feeds all config and waits for calibration
 	int prev_status = avr_s[255];
-	int delay = 500;
-	sendMsg(255,0); //query status
-	recvMsg();
-	mssleep(250);
+	avr_s[255] = 0;
+	if (verbose) printf("Initializing RPiCopter...\n");
 	while (avr_s[255]!=5 && !stop) {
-		sendMsg(255,0);
+		sendMsg(255,0); //query status
+		sendMsg(255,1); //crc status
+		mssleep(350);
 		recvMsg();
-		mssleep(delay);
-		if ((prev_status != avr_s[255]) && avr_s[255]!=-1) {
-			printf("AVR initiation: %i/5\n",avr_s[255]);	
+		if (prev_status!=avr_s[255]) {
+			if (verbose) {
+				if (avr_s[255]==-1) printf("Waiting for AVR status change.\n");
+				else printf("AVR Status: %i\n",avr_s[255]);
+			}
 			prev_status = avr_s[255];
 		}
-		switch (avr_s[255]) {
+
+		if (avr_s[254]!=0) { //AVR reported crc error when receiving data
+			reset_avr();
+			avr_s[254] = 0;
+			avr_s[255] = 0;
+		}
+		else switch (avr_s[255]) {
 			case -1: break;
-			case 0: break;
-			case 1: avr_s[255]=-1; sendConfig(); delay=250; break;
-			case 2: break;
-			case 3: break;
-			case 4: delay=100; break;
+			case 0: reset_avr(); break; //AVR should boot into status 1 so 0 means something wrong
+			case 1: sendConfig(); mssleep(1000); avr_s[255] = -1; sendMsg(255,2); break;
+			case 2: break; //AVR should arm motors and set status to 3
+			case 3: break; //AVR is initializing MPU 
+			case 4: break; //AVR is calibration gyro
 			case 5: break;
-			case 255: avr_s[255]=-1; reset_avr(); delay=500; break; 
+			case 255: printf("Gyro calibration failed!\n"); reset_avr(); avr_s[255] = 0; break; //calibration failed
 			default: printf("Unknown AVR status %i\n",avr_s[255]); break;
-		} 
+		}
 	}
+}
+
+void loop() {
 	bs_reset();
 	clock_gettime(CLOCK_REALTIME,&t2);                                           
 	ts = t1 = t2;
-
+	if (verbose) printf("Starting main loop...\n");
 	while (1 && !err && !stop) {
 #ifndef NOCONTROLLER
 		ret = rec_update(); 
@@ -429,7 +422,10 @@ void loop() {
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 
 		//if (ret == 0 && dt_ms<20) continue;
-		if (dt_ms<15) continue; //4 packets normally take 50ms anyway, so it should not stop in here
+		if (dt_ms<50) {
+			mssleep(50-dt_ms);
+			continue; //do not flood AVR with data - will cause only problems; each loop sends 4 msg; 50ms should be enough for AVR to consume them
+		}
 		t1 = t2;
 
 		if (alt_hold || rec.yprt[3]>config.rec_t[2])
@@ -441,7 +437,7 @@ void loop() {
 			bs_err = bs_update(c*dt_ms);
 			if (bs_err) {
 				bs.alt = _a;
-				printf("Disabling barometer. Fixing altitude at %2.1f\n",bs.alt);
+				if (verbose) printf("Disabling barometer. Fixing altitude at %2.1f\n",bs.alt);
 			}
 		} 
 
@@ -449,37 +445,26 @@ void loop() {
 			case 0: break;
 			case 1: 
 				log1(); 
-#ifdef DEBUG
-				log1_print();
-#endif
+				if (verbose==2) log1_print();
 				break;
 			case 2: 
 				log2(); 
-#ifdef DEBUG
-				log2_print();
-#endif
+				if (verbose==2) log2_print();
 				break;
 			case 3: 
 				log3(); 
-#ifdef DEBUG
-				log3_print();
-#endif
+				if (verbose==2) log3_print();
 				break;
 			case 4:
 				log4();
-#ifdef DEBUG
-				log4_print();
-#endif
+				if (verbose==2) log4_print();
 				break;
 			case 5:
 				log5();
-				log5_print();
-				break;
-			case 99:
-				printf("SPI CRC errors: %i\n",avr_s[254]);
+				if (verbose==2) log5_print();
 				break;
 			case 100:
-				printf("Accel pid: %i\n",avr_s[35]);
+				if (verbose==2) log100_print();
 				break;
 			default: break;
 		}
@@ -493,14 +478,15 @@ void loop() {
 		for (int i=0;i<4;i++) {
 			sendMsg(10+i,rec.yprt[i]);
 		}
-		sendMsg(14,bs.alt*100); //in cm
+		sendMsg(14,bs.alt*100.f); //in cm
 		recvMsg();
 	}
 }
 
 void print_usage() {
 	printf("-v - verbose mode\n");
-	printf("-s [path] - path to socket to use\n");
+	printf("-a [addr] - address to connect to (defaults to 127.0.0.1)\n");
+	printf("-p [port] - port to connect to (default to 1030)\n");
 }
 
 int main(int argc, char **argv) {
@@ -508,55 +494,57 @@ int main(int argc, char **argv) {
 	signal(SIGTERM, catch_signal);
 	signal(SIGINT, catch_signal);
 
-        int option;
-        verbose = 0;
-        while ((option = getopt(argc, argv,"vs:")) != -1) {
-                switch (option)  {
-                        case 'v': verbose=1; break;
-                        case 's': strcpy(sock_path,optarg); break;
-                        default:
-                                print_usage();
-                                return -1;
-                }
-        }
-
-	struct sched_param param;
-
-
-	param.sched_priority = 49;
-	if(sched_setscheduler(0, SCHED_FIFO, &param) == -1) {
-		perror("sched_setscheduler failed");
-		exit(-1);
+	int option;
+	verbose = 0;
+	while ((option = getopt(argc, argv,"v:a:p:")) != -1) {
+		switch (option)  {
+			case 'v': verbose=atoi(optarg); break;
+			case 'a': strcpy(sock_path,optarg); break;
+			case 'p': portno = atoi(optarg); break;
+			default:
+				  print_usage();
+				  return -1;
+		}
 	}
-
-	if(mlockall(MCL_CURRENT|MCL_FUTURE) == -1) {
-		perror("mlockall failed");
-		exit(-2);
-	}
-
-	stack_prefault();
 
 	for (int i=0;i<256;i++)
 		avr_s[i] = 0;
 
-	reset_avr();
-
+	if (verbose) printf("Opening socket...\n");
 
 	/* Create socket on which to send. */
-	sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
 		perror("opening socket");
 		exit(1);
 	}
-	/* Construct name of socket to send to. */
-	address.sun_family = AF_UNIX;
-	strcpy(address.sun_path, sock_path);
+	server = gethostbyname(sock_path);
+	if (server == NULL) {
+		fprintf(stderr,"ERROR, no such host\n");
+		return -1;
+	}
+	bzero((char *) &address, sizeof(address));
+	address.sin_family = AF_INET;
+	bcopy((char *)server->h_addr,
+			(char *)&address.sin_addr.s_addr,
+			server->h_length);
+	address.sin_port = htons(portno);
 
-        if (connect(sock, (struct sockaddr *) &address, sizeof(struct sockaddr_un)) < 0) {
-                close(sock);
-                perror("connecting socket");
-                exit(1);
-        }
+	if (connect(sock, (struct sockaddr *) &address, sizeof(struct sockaddr_in)) < 0) {
+		close(sock);
+		perror("connecting socket");
+		exit(1);
+	}
+
+	/* set non-blocking
+	   ret = fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
+	   if (ret == -1){
+	   perror("calling fcntl");
+	   return -1;
+	   }
+	 */
+	if (verbose) printf("Connected to avrspi\n");
+	reset_avr();
 
 
 
@@ -587,12 +575,13 @@ int main(int argc, char **argv) {
 	}
 
 	mssleep(100);
-	printf("int size: %lu\nlong size: %lu\nfloat size: %lu\nyprt size: %lu\n",sizeof(int),sizeof(long),sizeof(float),sizeof(rec.yprt));
+	if (verbose) printf("int size: %lu\nlong size: %lu\nfloat size: %lu\nyprt size: %lu\n",sizeof(int),sizeof(long),sizeof(float),sizeof(rec.yprt));
 
 
-	printf("Starting main loop...\n");
 
+	init();
 	loop();
-	printf("Closing.\n");
+	close(sock);
+	if (verbose) printf("Closing.\n");
 	return 0;
 }
