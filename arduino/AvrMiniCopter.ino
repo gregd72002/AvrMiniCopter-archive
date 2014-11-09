@@ -51,6 +51,7 @@ float vz = 0.f;
 float pos_err = 0.f, vz_target = 0.f;
 
 float bc,bc1,bc2,bc3;
+signed char baro_counter = 0;
 
 int alt_hold = 0;
 float alt_hold_target;
@@ -207,6 +208,7 @@ int process_command() {
 #ifdef ALTHOLD
 			case 14: //altitude reading in cm - convert it into altitude error 
 				 static float b;
+				 baro_counter = 100; //use this baro reading not more than 100 times
 				 if (!buf_space(&alt_buf)) b = buf_pop(&alt_buf); //buffer full
 				 else b = alt_base;
 				 alt_err = v - (b + alt_corr);
@@ -323,7 +325,7 @@ void log_altitude() {
 	sendPacket(30,alt_hold_target);
 	sendPacket(31,alt);
 	sendPacket(32,vz);
-//	sendPacket(33,accel_err*100.f);
+	//	sendPacket(33,accel_err*100.f);
 }
 #endif
 
@@ -469,42 +471,45 @@ void controller_loop() {
 	}
 #ifdef ALTHOLD
 
-	//maintain altitude & velocity
-	accel_z = mympu.accel[2]*982.f; //convert accel to cm/s (9.82 * 100)
-	accel_corr += (alt_err * bc3 * loop_s);
-	vz += (alt_err * bc2 * loop_s);
-	alt_corr += (alt_err * bc1 * loop_s);
-	vz_inc = (accel_z + accel_corr) * loop_s;
-	alt_base += (vz + vz_inc * 0.5f) * loop_s;
-	alt = alt_base + alt_corr;
-	vz += vz_inc;
-	buf_push(&alt_buf, alt_base);
-	//end maintain altitude & velocity 
+	if (baro_counter>0) { //if there is no recent baro reading dont do alt_hold
+		baro_counter--;
+		//maintain altitude & velocity
+		accel_z = mympu.accel[2]*982.f; //convert accel to cm/s (9.82 * 100)
+		accel_corr += (alt_err * bc3 * loop_s);
+		vz += (alt_err * bc2 * loop_s);
+		alt_corr += (alt_err * bc1 * loop_s);
+		vz_inc = (accel_z + accel_corr) * loop_s;
+		alt_base += (vz + vz_inc * 0.5f) * loop_s;
+		alt = alt_base + alt_corr;
+		vz += vz_inc;
+		buf_push(&alt_buf, alt_base);
+		//end maintain altitude & velocity 
 
-	// do altitude PID
-	pos_err = alt_hold_target - alt;
-	ld = MAX_ACCEL / (2.f * pid_alt.Kp * pid_alt.Kp);
-	if (pos_err > 2.f*ld) 
-		vz_target = sqrt(2.f * MAX_ACCEL * (pos_err-ld)); 	
-	else if (pos_err < -2.f*ld)
-		vz_target = -sqrt(2.f * MAX_ACCEL * (-pos_err-ld)); 	
-	else {
-		pid_update(&pid_alt,pos_err, loop_s);
-		vz_target = pid_alt.value;
-	}
-	// end altitude PID
+		// do altitude PID
+		pos_err = alt_hold_target - alt;
+		ld = MAX_ACCEL / (2.f * pid_alt.Kp * pid_alt.Kp);
+		if (pos_err > 2.f*ld) 
+			vz_target = sqrt(2.f * MAX_ACCEL * (pos_err-ld)); 	
+		else if (pos_err < -2.f*ld)
+			vz_target = -sqrt(2.f * MAX_ACCEL * (-pos_err-ld)); 	
+		else {
+			pid_update(&pid_alt,pos_err, loop_s);
+			vz_target = pid_alt.value;
+		}
+		// end altitude PID
 
-	// do velocity PID
-	pid_update(&pid_vz, vz_target - vz, loop_s);
-	// end velocity PID
+		// do velocity PID
+		pid_update(&pid_vz, vz_target - vz, loop_s);
+		// end velocity PID
 
-	accel_err += 0.11164f * (pid_vz.value - accel_z - accel_err);
-	pid_update(&pid_accel,accel_err,loop_s);
-	if (alt_hold) {
-		yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
-	} else {
-		alt_hold_target = alt;
-	} 
+		accel_err += 0.11164f * (pid_vz.value - accel_z - accel_err);
+		pid_update(&pid_accel,accel_err,loop_s);
+		if (alt_hold) {
+			yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
+		} else {
+			alt_hold_target = alt;
+		} 
+	} else alt_hold = 0; //baro expired
 #endif
 	if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
 	if (yaw_target-mympu.ypr[0]>180.0f) yaw_target*=-1;     
