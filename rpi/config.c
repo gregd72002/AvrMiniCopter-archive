@@ -14,52 +14,52 @@ int config_open(const char *path) {
 
     if (state ==0) {
 
-	if (fscanf(f,"%i\t%i\t%i\n",&config.log_seq,&config.log_t,&config.cam_seq)<0) state = 1;
+	if (fscanf(f,"%i\t%i\t%i\n",&config.log_seq,&config.log_t,&config.cam_seq)!=3) state = 1;
 
 	for (int i=0;i<3 && !state;i++) 
-            if (fscanf(f,"%i\t",&config.rec_t[i])<0) state = 1;
+            if (fscanf(f,"%i\t",&config.rec_t[i])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
         for (int i=0;i<2 && !state;i++) { 
             for (int j=0;j<3 && !state;j++) 
-                if (fscanf(f,"%i\t",&config.rec_ypr[i][j])<0) state = 1;
+                if (fscanf(f,"%i\t",&config.rec_ypr[i][j])!=1) state = 1;
             if (fscanf(f,"\n")<0) state=1;
         }
 
         for (int i=0;i<3 && !state;i++) {
             for (int j=0;j<5 && !state;j++)
-                if (fscanf(f,"%i\t",&config.r_pid[i][j])<0) state = 1;
+                if (fscanf(f,"%i\t",&config.r_pid[i][j])!=1) state = 1;
             if (fscanf(f,"\n")<0) state=1;
         }
 
         for (int i=0;i<3 && !state;i++) {
             for (int j=0;j<5 && !state;j++)
-                if (fscanf(f,"%i\t",&config.s_pid[i][j])<0) state = 1;
+                if (fscanf(f,"%i\t",&config.s_pid[i][j])!=1) state = 1;
             if (fscanf(f,"\n")<0) state=1;
         }
 
         for (int j=0;j<5 && !state;j++)
-            if (fscanf(f,"%i\t",&config.alt_pid[j])<0) state = 1;
+            if (fscanf(f,"%i\t",&config.alt_pid[j])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
         for (int j=0;j<5 && !state;j++)
-            if (fscanf(f,"%i\t",&config.vz_pid[j])<0) state = 1;
+            if (fscanf(f,"%i\t",&config.vz_pid[j])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
         for (int j=0;j<5 && !state;j++)
-            if (fscanf(f,"%i\t",&config.accel_pid[j])<0) state = 1;
+            if (fscanf(f,"%i\t",&config.accel_pid[j])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
-        if (fscanf(f,"%i\t%i",&config.a_pid[0],&config.baro_f)<0) state = 1;
+        if (fscanf(f,"%i\t%i",&config.a_pid[0],&config.baro_f)!=2) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
         for (int i=0;i<9 && !state;i++)
-            if (fscanf(f,"%i\t",&config.gyro_orient[i])<0) state = 1;
+            if (fscanf(f,"%i\t",&config.gyro_orient[i])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
         for (int i=0;i<4 && !state;i++)
-            if (fscanf(f,"%i\t",&config.motor_pin[i])<0) state = 1;
+            if (fscanf(f,"%i\t",&config.motor_pin[i])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
-        if (fscanf(f,"%i\t",&config.mpu_addr)<0) state = 1;
+        if (fscanf(f,"%i\t",&config.mpu_addr)!=1) state = 1;
 
         fclose(f);
 

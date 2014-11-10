@@ -1,8 +1,10 @@
+#include "Arduino.h"
 #ifdef DEBUG
 #include "freeram.h"
 #endif
 
-int crc_err;
+
+uint8_t crc_err;
 #include "mpu.h"
 #include "I2Cdev.h"
 #include <SPI.h>
@@ -22,8 +24,8 @@ Servo myservo[4];
 int m[4]; //calculated motor thrust
 byte motor_pin[4]; //FL_PIN,BL_PIN,FR_PIN,BR_PIN;
 
-short mpu_addr; //136
-unsigned int motor_pwm[2]; //min, inflight threshold;
+uint8_t mpu_addr; 
+int motor_pwm[2]; //min, inflight threshold;
 
 struct s_pid pid_r[3];
 struct s_pid pid_s[3];
@@ -51,15 +53,15 @@ float vz = 0.f;
 float pos_err = 0.f, vz_target = 0.f;
 
 float bc,bc1,bc2,bc3;
-signed char baro_counter = 0;
+int8_t baro_counter = 0;
 
-int alt_hold = 0;
+int8_t alt_hold = 0;
 float alt_hold_target;
 int alt_hold_throttle;
 
 
 
-unsigned char loop_count = 0;
+uint8_t loop_count = 0;
 #ifdef DEBUG
 unsigned int c = 0; //cumulative number of successful MPU/DMP reads
 unsigned int np = 0; //cumulative number of MPU/DMP reads that brought no packet back
@@ -68,20 +70,17 @@ unsigned int err_o = 0; //cumulative number of MPU/DMP reads that had overflow b
 #endif
 
 
-byte status = 0;
-byte fly_mode;
-byte log_mode;
-unsigned short gyro_orientation;
+uint8_t status = 0;
+uint8_t fly_mode;
+uint8_t log_mode;
+uint8_t gyro_orientation;
 
 float yaw_target;
 
 byte packet[4];
 
 int yprt[4] = {0,0,0,0};
-signed char trim[3] = {0,0,0}; //0-pitch; 1-roll
-
-unsigned int mpu_err = 0;
-unsigned int rec_err = 0;
+int8_t trim[3] = {0,0,0}; //0-pitch; 1-roll
 
 void motor_idle() {
 	for (int i=0;i<4;i++)
@@ -126,17 +125,13 @@ void initAVR() {
 	bc2 = 0.12f;
 	bc3 = 0.1f;
 
-	mpu_addr = 136;
-
 	yaw_target = 0.f;
 	loop_count = 0;
 	status = 0;
 	fly_mode = 0;
 	log_mode = 0;
-	mpu_addr = 136; //for identity matrix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
+	gyro_orientation = 136; //for identity matrix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
 	crc_err = 0;
-	mpu_err = 0;
-	rec_err = 0;
 	alt_hold = 0;
 	alt_hold_target = 0.0f;
 	alt_hold_throttle = 0;
@@ -171,7 +166,7 @@ void setup() {
 
 int process_command() { 
 	static unsigned long last_command = millis();
-	if (millis() - last_command>900) {
+	if (millis() - last_command>1000) {
 		alt_hold=0;
 		yprt[0]=yprt[1]=yprt[2]=yprt[3]=0;
 	}
@@ -182,7 +177,6 @@ int process_command() {
 	if (SPI_getPacket(packet)==0) {
 		t = packet[0];
 		v = packet[2] << 8 | packet[1];
-		if (t==13 || t==14) last_command = millis(); //throttle or altitude msg
 		switch(t) {
 #ifdef DEBUG
 			case 0: Serial.println("Received packet 0! Check your SPI connection!"); //this usually happens by default when SPI wiring is not right
@@ -204,7 +198,7 @@ int process_command() {
 			case 10: yprt[0] = v; break;
 			case 11: yprt[1] = v; break;
 			case 12: yprt[2] = v; break;
-			case 13: yprt[3] = v; break;
+			case 13: last_command = millis(); yprt[3] = v; break;
 #ifdef ALTHOLD
 			case 14: //altitude reading in cm - convert it into altitude error 
 				 static float b;
@@ -577,7 +571,7 @@ int check_init() {
 
 int gyroCal() {
 	static float accel = 0.0f;
-	static unsigned int c = 0;
+	static byte c = 0;
 	static unsigned int loop_c = 0;
 	loop_c++;
 	if (loop_c>50000) status=255;

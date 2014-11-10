@@ -16,7 +16,7 @@
 
 #include <stdio.h>
 
-#define MAX_CLIENTS 5
+#define MAX_CLIENTS 6
 #define MSG_SIZE 3
 
 int verbose = 1;

@@ -32,7 +32,7 @@ static unsigned char fifoCount;
 static unsigned int _rate;
 static unsigned int _c;
 
-int mympu_open(short addr,unsigned int rate, unsigned short orient) {
+int8_t mympu_open(short addr,unsigned int rate, unsigned short orient) {
     _rate = rate;
     _c = 0;
   	mpu_select_device(addr);
@@ -162,7 +162,7 @@ void mympu_reset_fifo() {
 }
 
 #ifdef MPU9150
-int mympu_update_compass() {
+int8_t mympu_update_compass() {
     if (_c <_rate/50) return 1;
 
     ret = mpu_get_compass_reg(comp,NULL);
@@ -179,7 +179,7 @@ int mympu_update_compass() {
 #endif
 
 
-int mympu_update() {
+int8_t mympu_update() {
 /*
 	do {
 		ret = dmp_read_fifo(gyro,NULL,q._l,NULL,&sensors,&fifoCount);
@@ -204,7 +204,7 @@ int mympu_update() {
 #ifdef DEBUG
         Serial.print("ERR Fifocount: "); Serial.println(fifoCount); 
 #endif
-        return -200;
+        return -128;
     }
 
 	q._f.w = (float)q._l[0] / (float)QUAT_SENS;

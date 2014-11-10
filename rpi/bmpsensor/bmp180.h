@@ -19,26 +19,27 @@
 #ifndef BMP180_h
 #define BMP180_h
 
-#include "interface.h"
-struct s_bs bs {                                                                              
-    .t = 1.0f,                                                                   
-    .p = 1.0f,                                                                   
-    .p0 = 1.0f,                                                                  
-    .alt = 1.0f  //in meters                                                                
+struct s_bs {
+        float t;
+        float p;
+        float p0;
+        float alt;
 };
+
+extern struct s_bs bs;
 
 int bs_open();
 int bs_update(unsigned long t_ms);
 int bs_reset();
 int bs_close();
 
-static int bsWriteBytes(unsigned char *values, char length);
-static int bsReadBytes(unsigned char *values, char length);
-static int bsReadU(unsigned char address, unsigned short &value);
-static int bsReadS(unsigned char address, short &value);
-static float altitude(float P, float P0);
-static int getPressure(float &P);
-static int preparePressure(int oversampling);
-static int getTemperature(float &T);
-static int prepareTemperature(void);
+int bsWriteBytes(unsigned char *values, char length);
+int bsReadBytes(unsigned char *values, char length);
+int bsReadU(unsigned char address, unsigned short &value);
+int bsReadS(unsigned char address, short &value);
+float altitude(float P, float P0);
+int getPressure(float &P);
+int preparePressure(int oversampling);
+int getTemperature(float &T);
+int prepareTemperature(void);
 #endif

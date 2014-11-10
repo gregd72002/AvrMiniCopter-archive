@@ -19,7 +19,6 @@ buy me a (root) beer someday.
 #include <stdio.h>
 #include <math.h>
 #include <unistd.h>
-#include "interface.h"
 #include "bmp180.h"
 #include "i2cdev/i2cdev.h"
 
@@ -42,7 +41,9 @@ buy me a (root) beer someday.
 static int state = 0;
 static unsigned long dt;
 
-static struct s_cc {
+struct s_bs bs; 
+
+struct s_cc {
     short AC1,AC2,AC3,B1,B2,MB,MC,MD;
     unsigned short AC4,AC5,AC6;
     long X1,X2,X3,B3,B5,B6;
@@ -61,6 +62,10 @@ static long *t_buf_ptr = t_buffer;
 int bs_open()
     // Initialize library for subsequent pressure measurements
 {
+    bs.t = 1.f;
+    bs.p = 1.f;
+    bs.p0 = 1.f;
+    bs.alt = 1.f;
 
 
     // The BMP180 includes factory calibration data stored on the device.
@@ -138,12 +143,13 @@ int bs_open()
 
 int bs_reset() {
         delay_ms(30);
-        for (int i=0;i<BUF_SIZE*10;i++) {
+        for (int i=0;i<BUF_SIZE*10;i++) { //get some initial samples 
             bs_update(i*10);
             delay_ms(10);
             bs.p0 = bs.p;
             bs.alt = altitude(bs.p, bs.p0); 
         }
+	return 0;
 }
 
 int bs_update(unsigned long t_ms) {
@@ -169,17 +175,18 @@ int bs_update(unsigned long t_ms) {
             printf("error setting pressure\n");
 	    return -1;
 	}
-        dt = t_ms;
         state = 0;
+	return 1; //end of cycle
+	dt = 0;
     }
 
     return 0;
 }
 
-static int prepareTemperature(void)
+int prepareTemperature(void)
     // Begin a temperature reading.
 {
-    unsigned char data[2], result;
+    unsigned char data[2];
 
     data[0] = BMP180_REG_CONTROL;
     data[1] = BMP180_COMMAND_TEMPERATURE;
@@ -187,7 +194,7 @@ static int prepareTemperature(void)
     return ret;
 }
 
-static int getTemperature(float &T)
+int getTemperature(float &T)
     // Retrieve a previously-started temperature reading.
     // Requires begin() to be called once prior to retrieve calibration parameters.
     // Requires startTemperature() to have been called prior and sufficient time elapsed.
@@ -223,7 +230,7 @@ static int getTemperature(float &T)
     return ret;
 }
 
-static int preparePressure(int oversampling)
+int preparePressure(int oversampling)
     // Begin a pressure reading.
     // Oversampling: 0 to 3, higher numbers are slower, higher-res outputs.
     // Will return delay in ms to wait, or 0 if I2C error.
@@ -254,7 +261,7 @@ static int preparePressure(int oversampling)
     return ret;
 }
 
-static int getPressure(float &P)
+int getPressure(float &P)
     // Retrieve a previously started pressure reading, calculate abolute pressure in mbars.
     // Requires begin() to be called once prior to retrieve calibration parameters.
     // Requires startPressure() to have been called prior and sufficient time elapsed.
@@ -320,7 +327,7 @@ static int getPressure(float &P)
 }
 
 
-static float altitude(float P, float P0)
+float altitude(float P, float P0)
     // Given a pressure measurement P (mb) and the pressure at a baseline P0 (mb),
     // return altitude (meters) above baseline.
 {
@@ -328,7 +335,7 @@ static float altitude(float P, float P0)
 }
 
 
-static int bsReadS(unsigned char address, short &value)
+int bsReadS(unsigned char address, short &value)
     // Read a signed integer (two bytes) from device
     // address: register to start reading (plus subsequent register)
     // value: external variable to store data (function modifies value)
@@ -351,7 +358,7 @@ static int bsReadS(unsigned char address, short &value)
 }
 
 
-static int bsReadU(unsigned char address, unsigned short &value)
+int bsReadU(unsigned char address, unsigned short &value)
     // Read an unsigned integer (two bytes) from device
     // address: register to start reading (plus subsequent register)
     // value: external variable to store data (function modifies value)
@@ -370,7 +377,7 @@ static int bsReadU(unsigned char address, unsigned short &value)
 }
 
 
-static int bsReadBytes(unsigned char *values, char length)
+int bsReadBytes(unsigned char *values, char length)
     // Read an array of bytes from device
     // values: external array to hold data. Put starting register in values[0].
     // length: number of bytes to read
@@ -379,7 +386,7 @@ static int bsReadBytes(unsigned char *values, char length)
 }
 
 
-static int bsWriteBytes(unsigned char *values, char length)
+int bsWriteBytes(unsigned char *values, char length)
     // Write an array of bytes to device
     // values: external array of data to write. Put starting register in values[0].
     // length: number of bytes to write

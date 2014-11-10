@@ -19,7 +19,6 @@
 #include "config.h"
 #include "ps3controller.h"
 #include "flightlog.h"
-#include "bmpsensor/interface.h"
 #include "mpu.h"
 
 #include "routines.h"
@@ -29,7 +28,6 @@
 int ret;
 int err = 0;
 int stop = 0;
-int bs_err = 0;
 
 int avr_s[256];
 
@@ -63,7 +61,7 @@ int sendMsg(int t, int v) {
 	return 0;
 }
 
-void recvMsg() {
+void recvMsgs() {
 	static int sel=0,i=0,ret=0;
 	static unsigned char buf[4];
 	static struct s_msg m;
@@ -224,7 +222,7 @@ void do_adjustments() {
 			break;
 		case 14:
 			if (alt_hold) alt_hold=0;
-			else if (!bs_err) alt_hold = 1;
+			else alt_hold = 1;
 			sendMsg(15,alt_hold);
 			break;
 		case 4:
@@ -345,7 +343,7 @@ void log4_print() {
 }
 
 
-unsigned long c = 0,k = 0;
+unsigned long k = 0;
 
 void init() {
 	//feeds all config and waits for calibration
@@ -356,7 +354,7 @@ void init() {
 		sendMsg(255,0); //query status
 		sendMsg(255,1); //crc status
 		mssleep(350);
-		recvMsg();
+		recvMsgs();
 		if (prev_status!=avr_s[255]) {
 			if (verbose) {
 				if (avr_s[255]==-1) printf("Waiting for AVR status change.\n");
@@ -385,7 +383,6 @@ void init() {
 }
 
 void loop() {
-	bs_reset();
 	clock_gettime(CLOCK_REALTIME,&t2);                                           
 	ts = t1 = t2;
 	if (verbose) printf("Starting main loop...\n");
@@ -430,16 +427,6 @@ void loop() {
 		if (alt_hold || rec.yprt[3]>config.rec_t[2])
 			flight_time += dt_ms; 
 
-		c++;
-		if (!bs_err) {
-			static float _a = bs.alt; 
-			bs_err = bs_update(c*dt_ms);
-			if (bs_err) {
-				bs.alt = _a;
-				if (verbose) printf("Disabling barometer. Fixing altitude at %2.1f\n",bs.alt);
-			}
-		} 
-
 		switch(config.log_t) {
 			case 0: break;
 			case 1: 
@@ -477,8 +464,7 @@ void loop() {
 		for (int i=0;i<4;i++) {
 			sendMsg(10+i,rec.yprt[i]);
 		}
-		sendMsg(14,bs.alt*100.f); //in cm
-		recvMsg();
+		recvMsgs();
 	}
 }
 
@@ -567,12 +553,6 @@ int main(int argc, char **argv) {
 			printf("Failed to initiate receiver! [%s]\n", strerror(ret));	
 			return -1;
 		}
-	}
-
-	ret=bs_open();
-	if (ret<0) {
-		printf("Failed to initiate pressure sensor! [%s]\n", strerror(err));	
-		return -1;
 	}
 
 	mssleep(100);

@@ -1,6 +1,8 @@
 #ifndef MPU_H
 #define MPU_H
 
+#include <Arduino.h>
+
 struct s_mympu {
 	float ypr[3];
 	float gyro[3];
@@ -13,11 +15,11 @@ struct s_mympu {
 
 extern struct s_mympu mympu;
 
-int mympu_open(short addr,unsigned int rate,unsigned short orient);
-int mympu_update();
+int8_t mympu_open(short addr,unsigned int rate,unsigned short orient);
+int8_t mympu_update();
 void mympu_reset_fifo();
 #ifdef MPU9150
-int mympu_update_compass();
+int8_t mympu_update_compass();
 #endif
 
 #endif
