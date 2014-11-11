@@ -165,6 +165,7 @@ int bs_update(unsigned long t_ms) {
             printf("error setting temp\n");
 	    return -1;
 	}
+	return 1; //pressure updated
     }
     if (state == 1 && (t_ms-dt)>(TEMPERATURE_DELAY/1000))  {
         if (getTemperature(bs.t)<0) {
@@ -176,10 +177,9 @@ int bs_update(unsigned long t_ms) {
 	    return -1;
 	}
         state = 0;
-	return 1; //end of cycle
 	dt = 0;
+	return 2; //end of cycle
     }
-
     return 0;
 }
 

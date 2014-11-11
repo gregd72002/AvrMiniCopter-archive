@@ -53,7 +53,7 @@ float vz = 0.f;
 float pos_err = 0.f, vz_target = 0.f;
 
 float bc,bc1,bc2,bc3;
-int8_t baro_counter = 0;
+uint8_t baro_counter = 0;
 
 int8_t alt_hold = 0;
 float alt_hold_target;
@@ -202,7 +202,7 @@ int process_command() {
 #ifdef ALTHOLD
 			case 14: //altitude reading in cm - convert it into altitude error 
 				 static float b;
-				 baro_counter = 100; //use this baro reading not more than 100 times
+				 baro_counter = 200; //use this baro reading not more than 200 times (this is 1000ms as the loop goes with 5ms)
 				 if (!buf_space(&alt_buf)) b = buf_pop(&alt_buf); //buffer full
 				 else b = alt_base;
 				 alt_err = v - (b + alt_corr);

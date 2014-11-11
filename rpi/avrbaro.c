@@ -184,11 +184,12 @@ void loop() {
 
 			bs_err = bs_update(c*dt_ms);
 			if (bs_err>=0) {
-				if (bs_err == 1) c = 0; //end of cycle
 				if (verbose==3) {
 					printf("T: %2.2f\tP: %2.2f\n",bs.t,bs.p);
 				}
-				sendMsg(14,bs.alt*100.f); //in cm
+				if (bs_err == 1) //pressure updated
+					sendMsg(14,bs.alt*100.f); //in cm
+				else if (bs_err == 2) c = 0; //end of cycle
 			} else 
 				if (verbose) printf("Barometer reading error!\n");
 
