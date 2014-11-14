@@ -80,7 +80,6 @@ float yaw_target;
 byte packet[4];
 
 int yprt[4] = {0,0,0,0};
-int8_t trim[3] = {0,0,0}; //0-pitch; 1-roll
 
 void motor_idle() {
 	for (int i=0;i<4;i++)
@@ -219,9 +218,6 @@ int process_command() {
 #endif
 			case 17: motor_pwm[0] = v; break;
 			case 18: motor_pwm[1] = v; break;
-			case 20: trim[0] = v; break;
-			case 21: trim[1] = v; break;
-			case 22: trim[2] = v; break;
 
 			case 69: 
 				 bc = v/100.f;
@@ -505,29 +501,29 @@ void controller_loop() {
 		} 
 	} else alt_hold = 0; //baro expired
 #endif
-	if (yaw_target-mympu.ypr[0]<-180.0f) yaw_target*=-1;                        
-	if (yaw_target-mympu.ypr[0]>180.0f) yaw_target*=-1;     
+	if ((yaw_target-mympu.ypr[0])<-180.0f) yaw_target*=-1.f; 
+	if ((yaw_target-mympu.ypr[0])>180.0f) yaw_target*=-1.f; 
 
 	//do STAB PID                                                            
 
-	if (abs(mympu.ypr[2])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
-	if (abs(mympu.ypr[1])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling
+	if (abs(mympu.ypr[2])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling excessivly
+	if (abs(mympu.ypr[1])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if pitching excessivly 
 	//flip recovery end
 
 	if (fly_mode == 0) {
 
 		//yaw requests will be fed directly to rate pid                          
 
-		if (abs(yprt[0])>7) {
-			pid_update(&pid_s[0],yprt[0]/10,loop_s);        
-			yaw_target = mympu.ypr[0];                                              
+		if (abs(yprt[0])>8) {
+			pid_update(&pid_s[0],yprt[0]/10.f,loop_s);        
+			yaw_target = mympu.ypr[0]; 
 		} else pid_update(&pid_s[0],yaw_target-mympu.ypr[0],loop_s);        
 
 		for (int i=1;i<3;i++)                                               
-			pid_update(&pid_s[i],yprt[i]+trim[i]-mympu.ypr[i],loop_s);
+			pid_update(&pid_s[i],yprt[i]-mympu.ypr[i],loop_s);
 
 	} else if (fly_mode == 1) {
-		pid_update(&pid_s[0],yprt[0]/10,loop_s);        
+		pid_update(&pid_s[0],yprt[0]/10.f,loop_s);        
 		pid_update(&pid_s[1],yprt[1]*pid_acro_p,loop_s);        
 		pid_update(&pid_s[2],yprt[2]*pid_acro_p,loop_s);        
 
@@ -560,7 +556,6 @@ void controller_loop() {
 		m[i] = m[i]<motor_pwm[1]?motor_pwm[1]:m[i];
 		myservo[i].writeMicroseconds(m[i]);
 	}
-
 }
 
 int check_init() {
@@ -624,7 +619,7 @@ void loop() {
 		case 4:
 			if (gyroCal()==0) 
 				status = 5;
-			p_millis = millis();
+			p_millis = millis()-5; //to ensure the first run has dt_ms of 5ms
 			break;
 
 		case 5:
