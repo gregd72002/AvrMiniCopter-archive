@@ -20,7 +20,7 @@ You will need AVR board (like Arduino Pro Mini) and Raspberry Pi or similar (SPI
 ## Roadmap
 * Real time charting
 * support for WIFI controllers (Android & IOS)
-* Radio control transmitters (should be very straight forward given you can hook it up to RPi)
+* Radio control transmitters (should be straight forward)
 * GPS & Waypoint navigation
 
 ## Requirements
