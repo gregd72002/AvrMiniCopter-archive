@@ -24,6 +24,7 @@
 #include "routines.h"
 #include "msg.h"
 
+struct s_rec js[2];
 
 int ret;
 int err = 0;
@@ -103,13 +104,6 @@ void recvMsgs() {
 	} while (!stop && sel && ret>0); //no error happened; select picked up socket state change; read got some data back
 }
 
-void sendTrims() {
-	for (int i=0;i<3;i++)
-		sendMsg(20+i,trim[i]);
-}
-
-
-
 void sendConfig() {
 	sendMsg(2,config.log_t);
 
@@ -149,32 +143,48 @@ void sendConfig() {
 }
 
 void reset_avr() {
-	sendMsg(255,255);
-	mssleep(1000);
+	//ensure AVR is properly rebooted
+	while (avr_s[255]!=1) { //once rebooted AVR will report status = 1;
+		avr_s[255] = -1;
+		sendMsg(255,255);
+		mssleep(1500);
+		recvMsgs();
+	}
 }
 
-
-void checkPIDs() {
-	for (int i=0;i<3;i++) {
-		if (config.r_pid[i][2]<0) config.r_pid[i][2]=0;
-		if (config.r_pid[i][3]<0) config.r_pid[i][3]=0;
-		if (config.r_pid[i][4]<0) config.r_pid[i][4]=0;
-		if (config.s_pid[i][2]<0) config.s_pid[i][2]=0;
-		if (config.s_pid[i][3]<0) config.s_pid[i][3]=0;
-		if (config.s_pid[i][4]<0) config.s_pid[i][4]=0;
+void do_adjustments_secondary(struct s_rec *js) {
+	static int adj4 = 25; //for altitude (cm)
+	if (js->aux<0) return;
+	switch (js->aux) {
+		case 11: //R1
+			if (alt_hold) {
+				sendMsg(16,adj4);
+			}
+			break;
+		case 9: //R2
+			if (alt_hold) {
+				sendMsg(16,-adj4);
+			}
+			break;
+		case 12:
+			if (rec_setting) rec_setting = 0;
+			else rec_setting = 1;
+			rec_config(js,config.rec_t,config.rec_ypr[rec_setting]);
+			break;
 	}
 
+	js->aux = -1;
 }
 
-void do_adjustments() {
-	if (rec.aux<0) return;
+void do_adjustments(struct s_rec *js) {
+	if (js->aux<0) return;
 
 	static int adj3 = 1; //for trim
-	static int adj4 = 25; //for altitude (mm)
+	static int adj4 = 25; //for altitude (cm)
 
 	static char str[128];
 
-	switch (rec.aux) {
+	switch (js->aux) {
 		case 8: //L2
 			memset(str, '\0', 128);
 			sprintf(str, "/usr/local/bin/vidsnap.sh %05d ", config.cam_seq++);
@@ -197,16 +207,16 @@ void do_adjustments() {
 			}
 			break;
 		case 0:
-			if (rec.yprt[3]<config.rec_t[2]) {flog_save(); config_save(); sync(); fflush(NULL);}
+			if (js[0].yprt[3]<config.rec_t[2]) {flog_save(); config_save(); sync(); fflush(NULL);}
 			break;
 		case 3: 
 			stop=1;
-			reset_avr();
+			sendMsg(255,255); //send reset event before exiting
 			break;
 		case 12:
 			if (rec_setting) rec_setting = 0;
 			else rec_setting = 1;
-			rec_setSetting(rec_setting);
+			rec_config(js,config.rec_t,config.rec_ypr[rec_setting]);
 			break;
 		case 1:
 			alt_hold = 0;
@@ -217,7 +227,7 @@ void do_adjustments() {
 			/*
 			   if (throttle_hold) throttle_hold=0;
 			   else throttle_hold = 1;
-			   throttle_target = rec.yprt[3];
+			   throttle_target = js->yprt[3];
 			 */
 			break;
 		case 14:
@@ -242,19 +252,15 @@ void do_adjustments() {
 			sendMsg(22,trim[2]);
 			break;
 		case 16: //mode change
-			//if (rec.yprt[3]<config.rec_t[2] && !alt_hold) {
-			{
-				mode++;
-				if (mode==2) mode=0;
-				sendMsg(3,mode);
-			}
-			//}
+			mode++;
+			if (mode==2) mode=0;
+			sendMsg(3,mode);
 			break;
 		default:
-			printf("Unknown command %i\n",rec.aux);
+			printf("Unknown command %i\n",js->aux);
 	}
-	if (rec.aux!=-1) printf("Button: %i\n",rec.aux);
-	rec.aux=-1; //reset receiver command
+	if ((verbose) && (js->aux!=-1)) printf("Button: %i\n",js->aux);
+	js->aux=-1; //reset receiver command
 
 } 
 
@@ -276,8 +282,8 @@ void log5() {
 }
 
 void log5_print() {
-	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\taccel_err: %2.2f\n",
-			flight_time,avr_s[30],avr_s[31],avr_s[32],avr_s[33]/100.f);
+	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\tp_accel: %i\n",
+			flight_time,avr_s[30],avr_s[31],avr_s[32],avr_s[33]);
 }
 
 void log100_print() {
@@ -349,6 +355,9 @@ void init() {
 	//feeds all config and waits for calibration
 	int prev_status = avr_s[255];
 	avr_s[255] = 0;
+
+	reset_avr();
+
 	if (verbose) printf("Initializing RPiCopter...\n");
 	while (avr_s[255]!=5 && !stop) {
 		sendMsg(255,0); //query status
@@ -364,10 +373,12 @@ void init() {
 		}
 
 		if (avr_s[254]!=0) { //AVR reported crc error when receiving data
+			printf("AVR reports CRC errors %i\n",avr_s[254]);
 			reset_avr();
 			avr_s[254] = 0;
 			avr_s[255] = 0;
 		}
+
 		else switch (avr_s[255]) {
 			case -1: break;
 			case 0: reset_avr(); break; //AVR should boot into status 1 so 0 means something wrong
@@ -386,9 +397,10 @@ void loop() {
 	clock_gettime(CLOCK_REALTIME,&t2);                                           
 	ts = t1 = t2;
 	if (verbose) printf("Starting main loop...\n");
+	int yprt[4] = {0,0,0,0};
 	while (1 && !err && !stop) {
 		if (!nocontroller) {
-			ret = rec_update(); 
+			ret = rec_update(&js[0]); 
 			// 0 - no update but read ok
 			// 1 - update
 			if (ret < 0) {
@@ -396,16 +408,31 @@ void loop() {
 				printf("Receiver reading error: [%s]\n",strerror(ret));
 				return;
 			}
+			do_adjustments(&js[0]);
+			memcpy(yprt,js[0].yprt,sizeof(int)*4);
+
+			if (js[1].fd) {
+				ret = rec_update(&js[1]);
+				if (ret<0) {
+					printf("Secondary receiver error: [%s]\n",strerror(ret));
+					js[1].fd = 0;
+				}
+				do_adjustments_secondary(&js[1]);
+				//js0 is the master control so only use js1 if js0 has no value
+				if (abs(yprt[0]) < 5) yprt[0] = js[1].yprt[0]; 
+				if (yprt[1] == 0) yprt[1] = js[1].yprt[1];
+				if (yprt[2] == 0) yprt[2] = js[1].yprt[2];
+			}
 		} else {
 			ret = 0;
-			rec.aux = -1;
-			rec.yprt[0] = 0;
-			rec.yprt[1] = 0;
-			rec.yprt[2] = 0;
-			rec.yprt[2] = 1000;
+			js[0].aux = -1;
+			yprt[0] = js[0].yprt[0] = 0;
+			yprt[1] = js[0].yprt[1] = 0;
+			yprt[2] = js[0].yprt[2] = 0;
+			yprt[2] = js[0].yprt[3] = 1000;
 		}
 
-		if (alt_hold && abs(rec.yprt[3]) > (config.rec_t[1]-50)) {
+		if (alt_hold && abs(yprt[3]) > (config.rec_t[1]-50)) {
 			alt_hold = 0;
 			throttle_hold = 0;
 			sendMsg(15,alt_hold);
@@ -417,14 +444,13 @@ void loop() {
 		dt = TimeSpecDiff(&t2,&t1);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 
-		//if (ret == 0 && dt_ms<20) continue;
 		if (dt_ms<50) {
 			mssleep(50-dt_ms);
 			continue; //do not flood AVR with data - will cause only problems; each loop sends 4 msg; 50ms should be enough for AVR to consume them
 		}
 		t1 = t2;
 
-		if (alt_hold || rec.yprt[3]>config.rec_t[2])
+		if (alt_hold || yprt[3]>config.rec_t[2])
 			flight_time += dt_ms; 
 
 		switch(config.log_t) {
@@ -455,15 +481,14 @@ void loop() {
 			default: break;
 		}
 
-		do_adjustments();
-
 		if (throttle_hold) {
-			rec.yprt[3] = throttle_target;
+			yprt[3] = throttle_target;
 		}
 
-		for (int i=0;i<4;i++) {
-			sendMsg(10+i,rec.yprt[i]);
-		}
+		sendMsg(10,yprt[0]+trim[0]);
+		sendMsg(11,yprt[1]+trim[1]);
+		sendMsg(12,yprt[2]+trim[2]);
+		sendMsg(13,yprt[3]);
 		recvMsgs();
 	}
 }
@@ -531,7 +556,6 @@ int main(int argc, char **argv) {
 	   }
 	 */
 	if (verbose) printf("Connected to avrspi\n");
-	reset_avr();
 
 
 
@@ -548,21 +572,29 @@ int main(int argc, char **argv) {
 	}   
 
 	if (!nocontroller) {
-		ret=rec_open();
+		ret=rec_open("/dev/input/js0",&js[0]);
 		if (ret<0) {
 			printf("Failed to initiate receiver! [%s]\n", strerror(ret));	
 			return -1;
 		}
+		rec_config(&js[0],config.rec_t,config.rec_ypr[0]);
+
+		ret=rec_open("/dev/input/js1",&js[1]);
+		if (ret<0) {
+			printf("Using single receiver\n");	
+		} else {
+			printf("Using two receivers\n");	
+			rec_config(&js[1],config.rec_t,config.rec_ypr[0]);
+		}
 	}
-
-	mssleep(100);
-	if (verbose) printf("int size: %lu\nlong size: %lu\nfloat size: %lu\nyprt size: %lu\n",sizeof(int),sizeof(long),sizeof(float),sizeof(rec.yprt));
-
-
 
 	init();
 	loop();
 	close(sock);
+	if (!nocontroller) {
+		if (js[0].fd) rec_close(&js[0]);
+		if (js[1].fd) rec_close(&js[1]);
+	}
 	if (verbose) printf("Closing.\n");
 	return 0;
 }

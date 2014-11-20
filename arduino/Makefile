@@ -1,3 +1,4 @@
+ARDUINO_DIR=/opt/arduino-1.0.5
 BOARD_TAG = atmega328
 F_CPU = 16000000L
 #F_CPU = 8000000L

@@ -89,7 +89,7 @@ void recvMsgs() {
 					} else {
 						m.t = buf[1];
 						m.v = unpacki16(buf+2);
-						if (verbose==2) printf("Received msg: %u %i\n",m.t,m.v);
+						if (verbose==3) printf("Received msg: %u %i\n",m.t,m.v);
 						i = 0;
 					}
 				}
@@ -152,6 +152,8 @@ void init() {
 		printf("Failed to initiate pressure sensor! [%s]\n", strerror(ret));
 		return;
 	}
+
+	if (verbose>0) printf("Initialization successful!\n");
 	initialized = 1;
 
 	mssleep(100);
@@ -178,14 +180,14 @@ void loop() {
 		}
 		else if (!connected) {
 			avrconnect();	
-			if (connected) delay = 50;
-		} else {
+			if (connected) { delay = 50; c = 0; }
+		} else { //initialized && connected = connected
 			c++;
 
 			bs_err = bs_update(c*dt_ms);
 			if (bs_err>=0) {
-				if (verbose==3) {
-					printf("T: %2.2f\tP: %2.2f\n",bs.t,bs.p);
+				if (verbose==2) {
+					printf("T: %2.2f\tAlt: %2.1f\tP: %2.2f\n",bs.t,bs.alt*100.f,bs.p);
 				}
 				if (bs_err == 1) //pressure updated
 					sendMsg(14,bs.alt*100.f); //in cm

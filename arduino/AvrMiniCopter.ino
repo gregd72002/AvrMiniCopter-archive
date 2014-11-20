@@ -209,6 +209,7 @@ int process_command() {
 				 break;
 			case 15:   alt_hold = v; 
 				   alt_hold_throttle = yprt[3]; 
+				   alt_hold_target = alt;
 				   break;
 			case 16: 
 				   if (v>MAX_ALT_INC) alt_hold_target += MAX_ALT_INC; 
@@ -284,6 +285,7 @@ int process_command() {
 					  case 0: sendPacket(255,status); break;
 					  case 1: sendPacket(254,crc_err); break;
 					  case 2: status = 2; break;
+					  case 3: sendPacket(253,alt_hold_target); sendPacket(252, alt); break;
 					  case 254: break; //dummy - used for SPI queued message retrieval  
 				  }
 				  break;
@@ -316,7 +318,7 @@ void log_altitude() {
 	sendPacket(30,alt_hold_target);
 	sendPacket(31,alt);
 	sendPacket(32,vz);
-	//	sendPacket(33,accel_err*100.f);
+	sendPacket(33,pid_accel.value);
 }
 #endif
 
@@ -419,6 +421,9 @@ float loop_s = 0.0f;
 unsigned long p_millis = 0;
 bool stop = 0;
 
+void do_alt_hold() {
+}
+
 void controller_loop() {
 	if (stop) {
 		motor_idle();
@@ -460,17 +465,21 @@ void controller_loop() {
 		motor_idle();
 		return;
 	}
+
 #ifdef ALTHOLD
 
 	if (baro_counter>0) { //if there is no recent baro reading dont do alt_hold
 		baro_counter--;
 		//maintain altitude & velocity
+
+		//when quadcopter goes up accel+, vz+, alt+;
+		//when quadcopter goes down accel-, vz-, alt-;
 		accel_z = mympu.accel[2]*982.f; //convert accel to cm/s (9.82 * 100)
 		accel_corr += (alt_err * bc3 * loop_s);
 		vz += (alt_err * bc2 * loop_s);
 		alt_corr += (alt_err * bc1 * loop_s);
-		vz_inc = (accel_z + accel_corr) * loop_s;
-		alt_base += (vz + vz_inc * 0.5f) * loop_s;
+		vz_inc = (accel_z + accel_corr) * loop_s; //v = a * t
+		alt_base += (vz + vz_inc * 0.5f) * loop_s; //s = v * t
 		alt = alt_base + alt_corr;
 		vz += vz_inc;
 		buf_push(&alt_buf, alt_base);
@@ -496,13 +505,17 @@ void controller_loop() {
 		accel_err += 0.11164f * (pid_vz.value - accel_z - accel_err);
 		pid_update(&pid_accel,accel_err,loop_s);
 		if (alt_hold) {
+			//yprt[3] = 1000;
 			yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
 		} else {
 			alt_hold_target = alt;
+			alt_base = alt;
+			alt_corr = 0.f;
+			buf_clear(&alt_buf);
+			
 		} 
 	} else alt_hold = 0; //baro expired
 #endif
-
 
 	if (abs(mympu.ypr[2])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if rolling excessivly
 	if (abs(mympu.ypr[1])>50.f) yaw_target = mympu.ypr[0]; //disable yaw if pitching excessivly 
@@ -605,7 +618,7 @@ void loop() {
 		sendPacket(255,status); 
 	}
 
-	//status = 2 done by SPI
+	//status = 2 set by client 
 
 	switch (status) {
 		case 2:
