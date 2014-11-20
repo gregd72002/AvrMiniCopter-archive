@@ -102,6 +102,8 @@ int config_open(const char *path) {
         config.r_pid[0][2]=1300;  //yaw
         config.r_pid[1][2]=500;  //pitch
         config.r_pid[2][2]=500;  //roll
+        config.r_pid[1][4]=-3;  //pitch
+        config.r_pid[2][4]=-3;  //roll
         config.s_pid[0][2]=2500;  //yaw
         config.s_pid[1][2]=2500;  //pitch
         config.s_pid[2][2]=2500;  //roll
