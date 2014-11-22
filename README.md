@@ -12,6 +12,7 @@ You will need a module board (i.e. Arduino Pro Mini) and Raspberry Pi or similar
 * learner mode (attach 2 controller simultaneously - one for the teacher and one for the learner)
 * web-based management portal for adjusting PIDs (use your bluetooth phone/tablet to configure, tune it, play videos and watch pictures, review flight logs & debug)
 * log charting
+* Real time charting
 * ESC calibration
 * Raspberry Pi camera support
 * Bluetooth and USB controller support (i.e. PS3 gamepad)
@@ -19,7 +20,6 @@ You will need a module board (i.e. Arduino Pro Mini) and Raspberry Pi or similar
 * BMP085 / BMP180 barometer
 
 ## Roadmap
-* Real time charting
 * support for WIFI controllers (Android & IOS)
 * GPS & Waypoint navigation
 

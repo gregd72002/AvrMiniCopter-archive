@@ -20,7 +20,10 @@ OBJ_AVRBARO=avrbaro.o routines.o bmpsensor/libbs.a libs/libi2cdev.a
 %.o: %.c                                                                         
 	$(CXX) -c $(CXXFLAGS) $(CXX_OPTS) $< -o $@ 
 
-all: avrcontroller avrspi avrspi_cmd avrspi_buf avrbaro
+all: _websockify avrcontroller avrspi avrspi_cmd avrspi_buf avrbaro
+
+_websockify:
+	$(MAKE) -C websockify/
 
 avrcontroller: $(OBJ_AVRCONTROLLER)
 	$(CC) $(CFLAGS) $(OBJ_AVRCONTROLLER) -o avrcontroller $(LDFLAGS) $(CC_OPTS) 
@@ -53,13 +56,16 @@ install:
 	$(INSTALL) -m 755 avrspi_cmd $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi_buf $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrbaro $(DESTDIR)/usr/local/bin/
+	$(INSTALL) -m 755 websockify/websockify $(DESTDIR)/usr/local/bin/
 
 clean:
 	cd bmpsensor && $(MAKE) clean
 	cd libs/i2cdev && $(MAKE) clean
+	cd websockify && $(MAKE) clean
 	rm -rf avrcontroller 
 	rm -rf avrspi_cmd
 	rm -rf avrspi_buf
 	rm -rf avrspi 
 	rm -rf avrbaro 
 	rm -rf *.o *~ *.mod
+

@@ -315,10 +315,10 @@ void log_accel_pid() {
 }
 
 void log_altitude() {
-	sendPacket(30,alt_hold_target);
-	sendPacket(31,alt);
-	sendPacket(32,vz);
-	sendPacket(33,pid_accel.value);
+	sendPacket(18,alt_hold_target);
+	sendPacket(19,alt);
+	sendPacket(20,vz);
+	sendPacket(21,pid_accel.value);
 }
 #endif
 
@@ -333,13 +333,13 @@ void log_accel() {
 
 	if ((loop_count%20)==0) { //200Hz so 10times a sec... -> every 100ms
 		for (int i=0;i<3;i++) {
-			sendPacket(20+i,_accelMax[i]*1000.f);
+			sendPacket(12+i,_accelMax[i]*1000.f);
 			_accelMax[i] = 0.f;
 		}
 	}
 	else if ((loop_count%20)==10) { //200Hz so 10times a sec... -> every 100ms
 		for (int i=0;i<3;i++) {
-			sendPacket(25+i,_accelMin[i]*1000.f);
+			sendPacket(15+i,_accelMin[i]*1000.f);
 			_accelMin[i] = 0.f;
 		}
 	}
@@ -353,13 +353,13 @@ void log_gyro() {
 void log_quat() {
 
 	for (int i=0;i<3;i++)
-		sendPacket(5+i,mympu.ypr[i]*100.f);
-	sendPacket(8,yaw_target*100.f);
+		sendPacket(4+i,mympu.ypr[i]*100.f);
+	sendPacket(7,yaw_target*100.f);
 }
 
 void log_motor() {
 	for (int i=0;i<4;i++)
-		sendPacket(10+i,m[i]);
+		sendPacket(8+i,m[i]);
 }
 
 
@@ -385,23 +385,17 @@ void log() {
 			if ((loop_count%20)==0) //200Hz -> every 50ms
 				log_gyro();
 			else if ((loop_count%20)==10) //200Hz -> every 50ms
-				log_quat();
-			break;
-
-		case 3: 
-			if ((loop_count%10)==0) //200Hz -> every 50ms
 				log_motor();
 			break;
-
-		case 4:
+		case 3:
 			if ((loop_count%20)==0) //200Hz -> every 50ms
-				log_motor();
-			else if ((loop_count%20)==10)
 				log_quat();
+			else if ((loop_count%20)==10)
+				log_motor();
 			break;
 
 #ifdef ALTHOLD
-		case 5:
+		case 4:
 			if ((loop_count%20)==0)  //200Hz so 10times a sec... -> every 100ms
 				log_altitude();
 			break;
@@ -419,16 +413,8 @@ void log() {
 
 float loop_s = 0.0f;
 unsigned long p_millis = 0;
-bool stop = 0;
-
-void do_alt_hold() {
-}
 
 void controller_loop() {
-	if (stop) {
-		motor_idle();
-		return;
-	}
 #ifdef MPU9150
 	ret = mympu_update_compass();
 	if (ret < 0) {
@@ -444,7 +430,6 @@ void controller_loop() {
 #endif
 		motor_idle();
 		status = 253;
-		stop = 1;
 		return;
 	}
 #ifdef DEBUG

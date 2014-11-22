@@ -273,17 +273,17 @@ void catch_signal(int sig)
 long dt_ms = 0;
 static struct timespec ts,t1,t2,*dt;
 
-void log5() {
+void log4() {
 	flog_push(5, 
 			(float)t2.tv_sec-ts.tv_sec
 			,(float)flight_time
-			,avr_s[30]/1.f,avr_s[31]/1.f,avr_s[32]/1.f
+			,avr_s[18]/1.f,avr_s[19]/1.f,avr_s[20]/1.f
 		 );
 }
 
-void log5_print() {
+void log4_print() {
 	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\tp_accel: %i\n",
-			flight_time,avr_s[30],avr_s[31],avr_s[32],avr_s[33]);
+			flight_time,avr_s[18],avr_s[19],avr_s[20],avr_s[21]);
 }
 
 void log100_print() {
@@ -292,15 +292,20 @@ void log100_print() {
 }
 
 void log3() {
-	flog_push(6, 
+	flog_push(10, 
 			(float)t2.tv_sec-ts.tv_sec
 			,(float)flight_time
-			,avr_s[10]/1.f,avr_s[11]/1.f,avr_s[12]/1.f
-			,avr_s[13]/1.f
+			,avr_s[4]/100.0f,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f
+			,avr_s[8]/1.f,avr_s[9]/1.f,avr_s[10]/1.f
+			,avr_s[11]/1.f
 		 );
 }
 
 void log3_print() {
+	printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\tqy: %f\tqp: %f\tqr: %f\tyt: %f\ty: %f\n",
+			flight_time,avr_s[8],avr_s[9],avr_s[10],avr_s[11],
+			avr_s[4]/100.0f,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f,(avr_s[7]-avr_s[4])/100.0f
+	      );
 	printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
 			flight_time,avr_s[10],avr_s[11],avr_s[12],avr_s[13]);
 }
@@ -309,45 +314,29 @@ void log2() { //gyro & quat
 			(float)t2.tv_sec-ts.tv_sec
 			,(float)flight_time
 			,avr_s[1]/100.0f,avr_s[2]/100.0f,avr_s[3]/100.0f
-			,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f,avr_s[8]/100.0f
+			,avr_s[8]/1.f,avr_s[9]/1.f,avr_s[10]/1.f
+			,avr_s[11]/1.f
 		 );
 }
 
 void log2_print() {
-	printf("T: %li\tgy: %2.2f\tgp: %2.2f\tgr: %2.2f\tqy: %2.2f\tqp: %2.2f\tqr: %2.2f\tyt: %2.2f\n",
-			flight_time,avr_s[1]/100.0f,avr_s[2]/100.0f,avr_s[3]/100.0f,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f,avr_s[8]/100.0f);
+	printf("T: %li\tgy: %2.2f\tgp: %2.2f\tgr: %2.2f\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
+			flight_time,avr_s[1]/100.0f,avr_s[2]/100.0f,avr_s[3]/100.0f,avr_s[8],avr_s[9],avr_s[10],avr_s[11]);
 }
 
 void log1() {
 	flog_push(8, 
 			(float)t2.tv_sec-ts.tv_sec
 			,(float)flight_time
-			,avr_s[20]/1000.0f,avr_s[21]/1000.0f,avr_s[22]/1000.0f
-			,avr_s[25]/1000.0f,avr_s[26]/1000.0f,avr_s[27]/1000.0f
+			,avr_s[12]/1000.0f,avr_s[13]/1000.0f,avr_s[14]/1000.0f
+			,avr_s[15]/1000.0f,avr_s[16]/1000.0f,avr_s[17]/1000.0f
 		 );
 }
 
 void log1_print() {
 	printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
-			flight_time,avr_s[20]/1000.0f,avr_s[21]/1000.0f,avr_s[22]/1000.0f,avr_s[25]/1000.0f,avr_s[26]/1000.0f,avr_s[27]/1000.0f);
+			flight_time,avr_s[12]/1000.0f,avr_s[13]/1000.0f,avr_s[14]/1000.0f,avr_s[15]/1000.0f,avr_s[16]/1000.0f,avr_s[17]/1000.0f);
 }
-
-void log4() {
-	flog_push(11, 
-			(float)t2.tv_sec-ts.tv_sec
-			,(float)flight_time
-			,avr_s[10]/1.f,avr_s[11]/1.f,avr_s[12]/1.f,avr_s[13]/1.f
-			,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f,avr_s[8]/100.0f,(avr_s[8]-avr_s[5])/100.0f
-		 );
-}
-
-void log4_print() {
-	printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\tqy: %f\tqp: %f\tqr: %f\tyt: %f\ty: %f\n",
-			flight_time,avr_s[10],avr_s[11],avr_s[12],avr_s[13],
-			avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f,avr_s[8]/100.0f,(avr_s[8]-avr_s[5])/100.0f
-	      );
-}
-
 
 unsigned long k = 0;
 
@@ -470,10 +459,6 @@ void loop() {
 			case 4:
 				log4();
 				if (verbose==2) log4_print();
-				break;
-			case 5:
-				log5();
-				if (verbose==2) log5_print();
 				break;
 			case 100:
 				if (verbose==2) log100_print();

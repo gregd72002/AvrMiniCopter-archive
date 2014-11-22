@@ -85,6 +85,7 @@ void recvMsgs() {
 				if (i==4) {
 					if (buf[0] == 1) {
 						if (verbose) printf("Disconnect request.\n");
+						i = 0;
 						reset();
 					} else {
 						m.t = buf[1];

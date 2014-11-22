@@ -192,6 +192,7 @@ int main(int argc, char **argv)
 					if (verbose) printf("Client %i disconnected.\n",i);
 					close(sock[i+1]);
 					sock[i+1] = 0;
+					buf_c[i] = 0;
 				} else { //pending message in buffer - forward to SPI
 					buf_c[i] += ret;
 					if (verbose) printf("Received: %i bytes\n",ret);
