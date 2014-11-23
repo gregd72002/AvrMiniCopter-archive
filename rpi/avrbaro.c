@@ -83,15 +83,15 @@ void recvMsgs() {
 			else {
 				i+=ret;
 				if (i==4) {
+					i = 0;
 					if (buf[0] == 1) {
 						if (verbose) printf("Disconnect request.\n");
-						i = 0;
 						reset();
 					} else {
 						m.t = buf[1];
 						m.v = unpacki16(buf+2);
 						if (verbose==3) printf("Received msg: %u %i\n",m.t,m.v);
-						i = 0;
+						if (m.t==255 && m.v==1) bs.p0=bs.p;
 					}
 				}
 			}
