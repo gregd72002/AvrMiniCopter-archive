@@ -227,7 +227,7 @@ int main(int argc, char **argv)
 		dt = TimeSpecDiff(&time_now,&last_msg);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 		if (dt_ms>50) {
-			if (spi) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
+			if (spi) for (i=0;i<5;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
 			clock_gettime(CLOCK_REALTIME, &last_msg);	
 		}
 	}
