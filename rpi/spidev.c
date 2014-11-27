@@ -22,14 +22,17 @@
 #include <linux/spi/spidev.h>
 #include "spidev.h"
 #include "crc8.h"
+#include "routines.h"
 #include <string.h>
 
 static const char *device = "/dev/spidev0.0";
 static uint8_t mode = 0;
 static uint8_t bits = 8;
-static uint32_t speed = 1000000;
-static uint32_t mspeed = 1000000;
-static uint16_t delay = 100;
+static uint32_t speed = 2000000;
+static uint32_t mspeed = 2000000;
+//static uint16_t delay = 25;
+static uint16_t delay = 100; //without delay RPi reads corrupted data
+//static uint16_t delay = 0;
 
 static int ret;
 static int fd;
@@ -37,6 +40,8 @@ static int fd;
 
 struct s_msg spi_buf[SPI_BUF_SIZE];
 int spi_buf_c = 0;
+
+int spi_crc_err = 0;
 
 void _spi_addByte(uint8_t b) {
     static uint8_t buf[4];
@@ -58,7 +63,8 @@ void _spi_addByte(uint8_t b) {
 	    spi_buf_c++;
 	    p = 0;
         } else {
-		printf("Received CRC failed msg %i %i %i\n",buf[0],v,buf[3]);
+		spi_crc_err++;
+		//printf("Received CRC failed %i msg %i %i %i\n",spi_crc_err,buf[0],v,buf[3]);
 		buf[0]=buf[1];
 		buf[1]=buf[2];
 		buf[2]=buf[3];
@@ -96,7 +102,8 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
         if (np==4) np = 0;
     }
 
-    usleep(5000);
+    mssleep(5); //without delay AVR reads corrupted messages
+    //usleep(5000); //without it AVR reads corrupted messages
 
     return ret;
 }

@@ -9,6 +9,7 @@
 extern struct s_msg spi_buf[SPI_BUF_SIZE];
 
 extern int spi_buf_c;
+extern int spi_crc_err;
 
 void spi_sendMsg(struct s_msg *m);
 void spi_sendIntPacket(uint8_t t, int16_t *v);

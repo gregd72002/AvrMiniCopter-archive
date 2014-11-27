@@ -276,7 +276,6 @@ int process_command() {
 			case 222: pid_s[2].Kp = (float)v/1000.f; break; 
 			case 223: pid_s[2].Ki = (float)v/1000.f; break; 
 			case 224: pid_s[2].Kd = (float)v/10000.f; break; 
-			case 249: sendPacket(249,v); break;
 			case 250: case 251: case 252: case 253:
 				  testMotor(t-250,v); break;
 			case 254: initMotor(v); break;
@@ -285,7 +284,6 @@ int process_command() {
 					  case 0: sendPacket(255,status); break;
 					  case 1: sendPacket(254,crc_err); break;
 					  case 2: status = 2; break;
-					  case 3: sendPacket(253,alt_hold_target); sendPacket(252, alt); break;
 					  case 254: break; //dummy - used for SPI queued message retrieval  
 				  }
 				  break;

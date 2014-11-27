@@ -17,6 +17,14 @@
 #include <stdio.h>
 
 #define MAX_CLIENTS 6
+
+
+//avrspi will keep SPI transfer active by sending MSG_RATE messages every MSG_PERIOD
+#define MSG_RATE 6 
+#define MSG_PERIOD 25 //ms
+
+int msg_counter = 0;
+
 #define MSG_SIZE 3
 
 int verbose = 1;
@@ -25,7 +33,7 @@ int echo = 0;
 int background = 0;
 int stop = 0;
 
-struct timespec time_now,last_msg;
+struct timespec time_now,time_prev,last_msg;
 struct timespec *dt;
 
 void catch_signal(int sig)
@@ -47,10 +55,14 @@ void process_msg(unsigned char *b) {
 		linuxgpio_highpulsepin(25,500);
 		linuxgpio_close();
 		//mssleep(1500);
+	} else if (m.t == 255 && m.v == 256) {
+		m.t = 253; m.v=spi_crc_err;
+		spi_buf[spi_buf_c++] = m;
 	} else {
 		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
 		if (spi) spi_sendIntPacket(m.t,&m.v);
 		clock_gettime(CLOCK_REALTIME, &last_msg);	
+		msg_counter++;
 	}
 }
 
@@ -74,6 +86,9 @@ int main(int argc, char **argv)
 	fd_set readfds;
 	struct s_msg dummy_msg = {t: 255, v: 254};
 	long dt_ms = 0;
+
+	clock_gettime(CLOCK_REALTIME, &time_prev);
+	clock_gettime(CLOCK_REALTIME, &time_now);
 
 	int option;
 	verbose = 1;
@@ -155,7 +170,7 @@ int main(int argc, char **argv)
 		}
 
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 100*1000L; //100ms
+		timeout.tv_usec = MSG_PERIOD*1000L; //100ms
 		int sel = select( max_fd + 1 , &readfds , NULL , NULL , &timeout);
 		if ((sel<0) && (errno!=EINTR)) {
 			perror("select");
@@ -224,11 +239,13 @@ int main(int argc, char **argv)
 
 		//ping if needed
 		clock_gettime(CLOCK_REALTIME, &time_now);
-		dt = TimeSpecDiff(&time_now,&last_msg);
+		dt = TimeSpecDiff(&time_now,&time_prev);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
-		if (dt_ms>50) {
-			if (spi) for (i=0;i<5;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
-			clock_gettime(CLOCK_REALTIME, &last_msg);	
+		if (dt_ms>MSG_PERIOD) {
+			time_prev = time_now;
+			//clock_gettime(CLOCK_REALTIME, &time_prev);
+			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
+			msg_counter = 0;
 		}
 	}
 
