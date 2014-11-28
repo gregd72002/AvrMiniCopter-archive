@@ -176,10 +176,13 @@ int bs_reset() {
 	return 0;
 }
 
-int bs_update(unsigned long t_ms) { //since the last update
-	if (state == 0 && (t_ms-dt)>(TEMPERATURE_DELAY/1000))  {
+int bs_update(unsigned long t_ms) { //since the last call 
+	static unsigned long t_passed = 0;
+	t_passed += t_ms;
+	if (state == 0 && t_passed>(TEMPERATURE_DELAY/1000))  {
 		dt = t_ms;
 		state = 1;
+		t_passed = 0;
 		if (getTemperature(bs.t)<0) {
 			printf("error getting temp\n");
 			return -1;
@@ -190,9 +193,10 @@ int bs_update(unsigned long t_ms) { //since the last update
 		}
 		return 1; 
 	}
-	if (state==1 && (t_ms-dt)>(PRESSURE_DELAY/1000)) { //_DELAY provided in us thus converting to ms
+	if (state==1 && (t_passed)>(PRESSURE_DELAY/1000)) { //_DELAY provided in us thus converting to ms
 		dt = 0;
 		state = 0;
+		t_passed = 0;
 		if (getPressure(bs.p)<0) {
 			printf("error getting pressure\n");
 			return -1;

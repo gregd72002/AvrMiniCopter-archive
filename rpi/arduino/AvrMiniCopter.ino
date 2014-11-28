@@ -53,7 +53,7 @@ float alt = 0.f;
 float vz = 0.f;
 float pos_err = 0.f, vz_target = 0.f;
 
-float bc=0.f,bc1=0.f,bc2=0.f,bc3=0.f;
+float bc,bc1,bc2,bc3;
 uint8_t baro_counter = 0;
 
 int8_t alt_hold = 0;
@@ -120,10 +120,10 @@ void initAVR() {
 	pid_init(&pid_alt);
 	buf_init(&alt_buf,15);
 #endif
-	bc = 6.f;
-	bc1 = 0.5f;
-	bc2 = 0.833333f;
-	bc3 = 0.004629f;
+	bc = 0.5f;
+	bc1 = 0.6f;
+	bc2 = 0.12f;
+	bc3 = 0.1f;
 
 	yaw_target = 0.f;
 	loop_count = 0;
@@ -133,7 +133,7 @@ void initAVR() {
 	gyro_orientation = 136; //for identity matrix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
 	crc_err = 0;
 	alt_hold = 0;
-	alt_hold_target = 0.f;
+	alt_hold_target = 0.0f;
 	alt_hold_throttle = 0;
 	accel_z = 0.f;
 
@@ -409,7 +409,7 @@ void log() {
 #endif
 }
 
-float loop_s = 0.005f;
+float loop_s = 0.0f;
 unsigned long p_millis = 0;
 
 void controller_loop() {
@@ -491,9 +491,11 @@ void controller_loop() {
 			//yprt[3] = 1000;
 			yprt[3] = (int)(alt_hold_throttle + pid_accel.value); 
 		} else {
-			pid_reset(&pid_alt);
-			pid_reset(&pid_vz);
-			pid_reset(&pid_accel);
+			alt_hold_target = alt;
+			alt_base = alt;
+			alt_corr = 0.f;
+			buf_clear(&alt_buf);
+			
 		} 
 	} else alt_hold = 0; //baro expired
 #endif
