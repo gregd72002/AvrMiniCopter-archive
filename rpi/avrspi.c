@@ -23,9 +23,10 @@
 #define MSG_RATE 6 
 #define MSG_PERIOD 25 //ms
 
-int msg_counter = 0;
+int msg_counter = 0; //counts the number of messages that are sent per MSG_PERIOD
 
 #define MSG_SIZE 3
+#define BUF_SIZE 20*MSG_SIZE
 
 int verbose = 1;
 int spi = 1;
@@ -54,7 +55,6 @@ void process_msg(unsigned char *b) {
 		linuxgpio_initpin(25);
 		linuxgpio_highpulsepin(25,500);
 		linuxgpio_close();
-		//mssleep(1500);
 	} else if (m.t == 255 && m.v == 256) {
 		m.t = 253; m.v=spi_crc_err;
 		spi_buf[spi_buf_c++] = m;
@@ -76,10 +76,10 @@ void print_usage() {
 int main(int argc, char **argv)
 {
 	int sock[MAX_CLIENTS+1], max_fd;
-	int i,ret;
+	int i,j,ret;
 	int portno = 1030;
 	struct sockaddr_in address;
-	unsigned char buf[MAX_CLIENTS][MSG_SIZE];
+	unsigned char buf[MAX_CLIENTS][BUF_SIZE];
 	unsigned short buf_c[MAX_CLIENTS];
 	unsigned char bufout[4];
 	struct timeval timeout;
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
 		}
 
 		timeout.tv_sec = 0;
-		timeout.tv_usec = MSG_PERIOD*1000L; //100ms
+		timeout.tv_usec = MSG_PERIOD*1000L; 
 		int sel = select( max_fd + 1 , &readfds , NULL , NULL , &timeout);
 		if ((sel<0) && (errno!=EINTR)) {
 			perror("select");
@@ -197,24 +197,29 @@ int main(int argc, char **argv)
 		} 
 		for (i=0;(i<MAX_CLIENTS) && (!stop);i++) {
 			if (FD_ISSET(sock[i+1], &readfds)) {
-				ret = read(sock[i+1] , buf[i]+buf_c[i], MSG_SIZE - buf_c[i]); 
+				ret = read(sock[i+1] , buf[i]+buf_c[i], BUF_SIZE - buf_c[i]); 
 				if (ret < 0) {
 					perror("Reading error");
 					close(sock[i+1]);
 					sock[i+1] = 0;
+					buf_c[i] = 0;
 				}
 				else if (ret == 0) {	//client disconnected
 					if (verbose) printf("Client %i disconnected.\n",i);
 					close(sock[i+1]);
 					sock[i+1] = 0;
 					buf_c[i] = 0;
-				} else { //pending message in buffer - forward to SPI
-					buf_c[i] += ret;
+				} else buf_c[i] += ret;
+				
+				if (buf_c[i]>=MSG_SIZE) { //pending messages in buffer - forward to SPI
 					if (verbose) printf("Received: %i bytes\n",ret);
-					if (buf_c[i] == MSG_SIZE) {
-						process_msg(buf[i]);
-						buf_c[i] = 0;
-					}
+					int msg_c = buf_c[i] / MSG_SIZE;
+					for (j=0;j<msg_c;j++)
+						process_msg(buf[i] + (MSG_SIZE*j)); 
+
+					for (j=0;j<buf_c[i] % MSG_SIZE;j++)
+						buf[i][j] = buf[i][msg_c*MSG_SIZE + j];
+					buf_c[i] = buf_c[i] % MSG_SIZE;
 				}
 			}
 		}
@@ -243,8 +248,7 @@ int main(int argc, char **argv)
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 		if (dt_ms>MSG_PERIOD) {
 			time_prev = time_now;
-			//clock_gettime(CLOCK_REALTIME, &time_prev);
-			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
+			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v); //ping
 			msg_counter = 0;
 		}
 	}

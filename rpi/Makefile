@@ -20,13 +20,16 @@ OBJ_AVRBARO=avrbaro.o routines.o bmpsensor/libbs.a libs/libi2cdev.a
 %.o: %.c                                                                         
 	$(CXX) -c $(CXXFLAGS) $(CXX_OPTS) $< -o $@ 
 
-all: _websockify avrcontroller avrspi avrspi_cmd avrspi_buf avrbaro
+all: _h264streamer _websockify avrcontroller avrspi avrspi_cmd avrspi_buf avrbaro
 
 modules:
 	$(MAKE) -C spi-bcm2708-dma/
 
 _websockify:
 	$(MAKE) -C websockify/
+
+_h264streamer:
+	$(MAKE) -C h264streamer/
 
 avrcontroller: $(OBJ_AVRCONTROLLER)
 	$(CC) $(CFLAGS) $(OBJ_AVRCONTROLLER) -o avrcontroller $(LDFLAGS) $(CC_OPTS) 
@@ -60,11 +63,13 @@ install:
 	$(INSTALL) -m 755 avrspi_buf $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrbaro $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 websockify/websockify $(DESTDIR)/usr/local/bin/
+	$(INSTALL) -m 755 h264streamer/h264streamer $(DESTDIR)/usr/local/bin/
 
 clean:
 	cd bmpsensor && $(MAKE) clean
 	cd libs/i2cdev && $(MAKE) clean
 	cd websockify && $(MAKE) clean
+	cd h264streamer && $(MAKE) clean
 	cd spi-bcm2708-dma && $(MAKE) clean
 	rm -rf avrcontroller 
 	rm -rf avrspi_cmd

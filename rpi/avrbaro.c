@@ -181,16 +181,18 @@ void loop() {
 		}
 		else if (!connected) {
 			avrconnect();	
-			if (connected) { delay = 50; }
+			if (connected) { delay = 50; c = 0; }
 		} else { //initialized && connected = connected
+			c++;
 
-			bs_err = bs_update(dt_ms);
+			bs_err = bs_update(c*dt_ms);
 			if (bs_err>=0) {
 				if (verbose==2) {
 					printf("T: %2.2f\tAlt: %2.1f\tP: %2.2f\n",bs.t,bs.alt*100.f,bs.p);
 				}
-				if (bs_err == 2) //pressure updated
+				if (bs_err == 1) //pressure updated
 					sendMsg(14,bs.alt*100.f); //in cm
+				else if (bs_err == 2) c = 0; //end of cycle
 			} else 
 				if (verbose) printf("Barometer reading error!\n");
 
