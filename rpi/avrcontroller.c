@@ -28,7 +28,7 @@ struct s_rec js[2];
 
 int ret;
 int err = 0;
-volatile int stop = 0;
+int stop = 0;
 
 int avr_s[256];
 
@@ -50,33 +50,6 @@ struct hostent *server;
 
 int verbose = 0;
 int nocontroller = 0;
-
-#define MSG_SIZE 3
-#define QUEUE_SIZE 20*MSG_SIZE
-unsigned char queue[QUEUE_SIZE];
-unsigned int queue_c = 0; //number of messages
-
-int queueMsg(int t, int v) {
-	if (queue_c>=QUEUE_SIZE-MSG_SIZE) {
-		printf("Error: Queue full. Need to flush!\n");
-		return -1;
-	}
-	queue[MSG_SIZE*queue_c] = t;
-	packi16(queue+MSG_SIZE*queue_c+1,v);
-	
-	queue_c++;
-	return queue_c;
-}
-
-int sendQueue() {
-	if (queue_c<=0) return 0;
-	if (write(sock, queue, MSG_SIZE*queue_c) < 0) {
-		perror("writing");
-		return -1;
-	}
-	queue_c = 0;
-	return 0;
-}
 
 int sendMsg(int t, int v) {
 	static unsigned char buf[3];
@@ -101,7 +74,7 @@ void recvMsgs() {
 		FD_ZERO(&fds);
 		FD_SET(sock,&fds);
 		timeout.tv_sec = 0;
-		timeout.tv_usec = 0;// If the timeout argument points to an object of type struct timeval whose members are 0, select() does not block
+		timeout.tv_usec = 0;
 		sel = select( sock + 1 , &fds , NULL , NULL , &timeout);
 		if ((sel<0) && (errno!=EINTR)) {
 			perror("select");
@@ -171,7 +144,7 @@ void sendConfig() {
 
 void reset_avr() {
 	//ensure AVR is properly rebooted
-	while (avr_s[255]!=1 && !stop) { //once rebooted AVR will report status = 1;
+	while (avr_s[255]!=1) { //once rebooted AVR will report status = 1;
 		avr_s[255] = -1;
 		sendMsg(255,255);
 		mssleep(1500);
@@ -497,12 +470,10 @@ void loop() {
 			yprt[3] = throttle_target;
 		}
 
-		queueMsg(10,yprt[0]+trim[0]);
-		queueMsg(11,yprt[1]+trim[1]);
-		queueMsg(12,yprt[2]+trim[2]);
-		queueMsg(13,yprt[3]);
-		sendQueue();
-
+		sendMsg(10,yprt[0]+trim[0]);
+		sendMsg(11,yprt[1]+trim[1]);
+		sendMsg(12,yprt[2]+trim[2]);
+		sendMsg(13,yprt[3]);
 		recvMsgs();
 	}
 }
@@ -561,15 +532,14 @@ int main(int argc, char **argv) {
 		perror("connecting socket");
 		exit(1);
 	}
-/*
 
-	//set non-blocking
+	/* set non-blocking
 	   ret = fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
 	   if (ret == -1){
 	   perror("calling fcntl");
 	   return -1;
 	   }
-*/
+	 */
 	if (verbose) printf("Connected to avrspi\n");
 
 
@@ -613,4 +583,3 @@ int main(int argc, char **argv) {
 	if (verbose) printf("Closing.\n");
 	return 0;
 }
-

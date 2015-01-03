@@ -13,20 +13,43 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <strings.h>
+#include <string.h>
 
 #include <stdio.h>
 
-#define MAX_CLIENTS 6
+#define MAX_TCP_CLIENTS 6
+#define MAX_UDP_CLIENTS 6
 
 
 //avrspi will keep SPI transfer active by sending MSG_RATE messages every MSG_PERIOD
 #define MSG_RATE 6 
 #define MSG_PERIOD 25 //ms
 
-int msg_counter = 0; //counts the number of messages that are sent per MSG_PERIOD
+int msg_counter = 0;
 
 #define MSG_SIZE 3
-#define BUF_SIZE 20*MSG_SIZE
+#define UDP_MSG_SIZE 4
+
+#define BUF_SIZE 64
+
+int portno = 1030;
+/* UDP */
+#define CLIENT_TIMEOUT 10
+struct sockaddr_in uaddress[MAX_UDP_CLIENTS];
+int uclients[MAX_UDP_CLIENTS];
+unsigned char ubuf[BUF_SIZE];
+struct sockaddr_in tmpaddress;
+socklen_t addrlen = sizeof(tmpaddress);
+int usock;
+struct timespec udp_time_now,udp_time_prev,udp_last_msg;
+/* UDP END */
+
+/* TCP */
+int sock[MAX_TCP_CLIENTS+1]; 
+struct sockaddr_in address;
+unsigned char buf[MAX_TCP_CLIENTS][BUF_SIZE];
+unsigned short buf_c[MAX_TCP_CLIENTS];
+/* TCP END */
 
 int verbose = 1;
 int spi = 1;
@@ -34,7 +57,7 @@ int echo = 0;
 int background = 0;
 int stop = 0;
 
-struct timespec time_now,time_prev,last_msg;
+struct timespec spi_time_now,spi_time_prev,spi_last_msg;
 struct timespec *dt;
 
 void catch_signal(int sig)
@@ -43,25 +66,60 @@ void catch_signal(int sig)
 	stop = 1;
 }
 
-void process_msg(unsigned char *b) {
+int udp_check_client(struct sockaddr_in *c) {
+        int i;
+        for (i=0;i<MAX_UDP_CLIENTS;i++)
+                if (uclients[i]) //client active
+                        if ((c->sin_port == uaddress[i].sin_port) &&
+                                        (c->sin_addr.s_addr == uaddress[i].sin_addr.s_addr)) {
+                                uclients[i] = CLIENT_TIMEOUT;
+                                return i;
+                        }
+
+        return -1;
+}
+
+int udp_add_client(struct sockaddr_in *c) {
+        if (verbose) printf("New client... ");
+        int i;
+
+        for (i=0;i<MAX_UDP_CLIENTS && uclients[i]>0;i++); //find a free spot
+
+        if (i==MAX_UDP_CLIENTS) {
+                if (verbose) printf("All spots taken!\n");
+                return -1;
+        } else {
+                uclients[i] = CLIENT_TIMEOUT;
+                memcpy(&uaddress[i],c,addrlen);
+        }
+
+        if (verbose) printf("OK: %i\n",i);
+        return i;
+}
+
+void process_msg(unsigned char *b,struct sockaddr_in *addr) {
 	struct s_msg m;
 	m.t = b[0];
 	m.v = unpacki16(b+1);
+
 	if (echo) 
 		spi_buf[spi_buf_c++] = m;
 
-	if (m.t == 255 && m.v == 255) {
+	if (m.t == 255 && m.v == 255) { //REBOOT AVR
 		if (verbose) printf("Reset AVR\n");
 		linuxgpio_initpin(25);
 		linuxgpio_highpulsepin(25,500);
 		linuxgpio_close();
-	} else if (m.t == 255 && m.v == 256) {
+		//mssleep(1500);
+	}
+	else if (m.t == 255 && m.v == 256) {
 		m.t = 253; m.v=spi_crc_err;
 		spi_buf[spi_buf_c++] = m;
-	} else {
+	}
+	else {
 		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
 		if (spi) spi_sendIntPacket(m.t,&m.v);
-		clock_gettime(CLOCK_REALTIME, &last_msg);	
+		clock_gettime(CLOCK_REALTIME, &spi_last_msg);	
 		msg_counter++;
 	}
 }
@@ -70,25 +128,27 @@ void print_usage() {
 	printf("-d run in background\n");
 	printf("-e run echo mode (useful for debugging)\n");
 	printf("-f do not do SPI (useful for debugging)\n");
-	printf("-p [port] port to listen on (defaults to 1030)\n");
+	printf("-p [port] port to listen on (defaults to %i)\n",portno);
 }
 
 int main(int argc, char **argv)
 {
-	int sock[MAX_CLIENTS+1], max_fd;
-	int i,j,ret;
-	int portno = 1030;
-	struct sockaddr_in address;
-	unsigned char buf[MAX_CLIENTS][BUF_SIZE];
-	unsigned short buf_c[MAX_CLIENTS];
-	unsigned char bufout[4];
-	struct timeval timeout;
+	/* SELECT */
+	int max_fd;
 	fd_set readfds;
+	struct timeval timeout;
+	/* END SELECT */
+	int i,j,ret;
+	unsigned char bufout[4];
 	struct s_msg dummy_msg = {t: 255, v: 254};
 	long dt_ms = 0;
 
-	clock_gettime(CLOCK_REALTIME, &time_prev);
-	clock_gettime(CLOCK_REALTIME, &time_now);
+	clock_gettime(CLOCK_REALTIME, &spi_time_prev);
+	clock_gettime(CLOCK_REALTIME, &spi_time_now);
+
+	//we use this to measure UDP connection time each second
+	clock_gettime(CLOCK_REALTIME, &udp_time_prev);
+	clock_gettime(CLOCK_REALTIME, &udp_time_now);
 
 	int option;
 	verbose = 1;
@@ -109,7 +169,7 @@ int main(int argc, char **argv)
 	signal(SIGTERM, catch_signal);
 	signal(SIGINT, catch_signal);
 
-	for (i=0; i<MAX_CLIENTS+1; i++) { 
+	for (i=0; i<MAX_TCP_CLIENTS+1; i++) { 
 		sock[i] = 0;
 		if (i>0) {
 			buf_c[i-1] = 0;
@@ -118,7 +178,13 @@ int main(int argc, char **argv)
 
 	sock[0] = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock[0] < 0) {
-		perror("opening socket");
+		perror("opening stream socket");
+		exit(1);
+	}
+
+	usock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (usock < 0) {
+		perror("opening datagram socket");
 		exit(1);
 	}
 
@@ -131,6 +197,10 @@ int main(int argc, char **argv)
 
 	if (bind(sock[0], (struct sockaddr *) &address, sizeof(struct sockaddr_in))) {
 		perror("binding stream socket");
+		exit(1);
+	}
+	if (bind(usock, (struct sockaddr *) &address, sizeof(struct sockaddr_in))) {
+		perror("binding datagram socket");
 		exit(1);
 	}
 	printf("Socket created on port %i\n", portno);
@@ -157,25 +227,63 @@ int main(int argc, char **argv)
 		}
 	}
 
-	clock_gettime(CLOCK_REALTIME, &last_msg);
+	clock_gettime(CLOCK_REALTIME, &spi_last_msg);
 
 	if (verbose) printf("Starting main loop\n");
 	while (!stop) {
 		FD_ZERO(&readfds);
 		max_fd = 0;
-		for (i=0;i<MAX_CLIENTS+1;i++) {
+		for (i=0;i<MAX_TCP_CLIENTS+1;i++) {
 			if (sock[i]<=0) continue;
 			FD_SET(sock[i], &readfds);
 			max_fd = sock[i]>max_fd?sock[i]:max_fd;
 		}
+		FD_SET(usock, &readfds);
+		max_fd = usock>max_fd?usock:max_fd;
 
 		timeout.tv_sec = 0;
-		timeout.tv_usec = MSG_PERIOD*1000L; 
+		timeout.tv_usec = MSG_PERIOD*1000L; //ms 
 		int sel = select( max_fd + 1 , &readfds , NULL , NULL , &timeout);
 		if ((sel<0) && (errno!=EINTR)) {
 			perror("select");
 			stop=1;
 		}
+
+                //check for orphan UDP connections
+                clock_gettime(CLOCK_REALTIME, &udp_time_now);
+                dt = TimeSpecDiff(&udp_time_now,&udp_time_prev);
+                dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
+                if (dt_ms>1000) {
+                        udp_time_prev = udp_time_now;
+                        for (i=0;i<MAX_UDP_CLIENTS;i++)
+                                if (uclients[i]>0) {
+                                        uclients[i]--;
+                                        if (uclients[i]<=0) {
+                                                if (verbose) printf("Client %i timeout.\n",i);
+                                        }
+                                }
+                }
+		//check UDP
+		if (!stop && FD_ISSET(usock, &readfds)) {
+			ret = recvfrom(usock, ubuf, BUF_SIZE, 0, (struct sockaddr *)&tmpaddress, &addrlen);
+			if (ret==UDP_MSG_SIZE) {
+				if (verbose) printf("UDP received %d bytes\n", ret);
+				unsigned char t = ubuf[0];
+				if (t==1) {
+					i = udp_check_client(&tmpaddress);
+					if (i<0) { //new client
+						i=udp_add_client(&tmpaddress);
+					}
+					if (i>=0) {
+						process_msg(ubuf,&tmpaddress);
+					}
+				}
+				process_msg(ubuf+1,&tmpaddress);
+                        } else {
+				printf("Unknown UDP message size %i\n",ret);
+			}
+		}
+
 		//If something happened on the master socket , then its an incoming connection
 		if (!stop && FD_ISSET(sock[0], &readfds)) {
 			int t = accept(sock[0], 0, 0);
@@ -183,53 +291,57 @@ int main(int argc, char **argv)
 				perror("accept");
 				continue;
 			}
-			for (i=0;i<MAX_CLIENTS;i++)
+			for (i=0;i<MAX_TCP_CLIENTS;i++)
 				if (sock[i+1] == 0) {
 					if (verbose) printf("Incoming client: %i\n",i);
 					sock[i+1] = t;
 					buf_c[i+1] = 0;
 					break;
 				}
-			if (i==MAX_CLIENTS) {
+			if (i==MAX_TCP_CLIENTS) {
 				printf("AVRSPI: No space in connection pool! Disconnecting client.\n");
 				close(t);
 			}
 		} 
-		for (i=0;(i<MAX_CLIENTS) && (!stop);i++) {
+		for (i=0;(i<MAX_TCP_CLIENTS) && (!stop);i++) {
 			if (FD_ISSET(sock[i+1], &readfds)) {
 				ret = read(sock[i+1] , buf[i]+buf_c[i], BUF_SIZE - buf_c[i]); 
 				if (ret < 0) {
 					perror("Reading error");
 					close(sock[i+1]);
 					sock[i+1] = 0;
-					buf_c[i] = 0;
 				}
 				else if (ret == 0) {	//client disconnected
 					if (verbose) printf("Client %i disconnected.\n",i);
 					close(sock[i+1]);
 					sock[i+1] = 0;
 					buf_c[i] = 0;
-				} else buf_c[i] += ret;
-				
-				if (buf_c[i]>=MSG_SIZE) { //pending messages in buffer - forward to SPI
-					if (verbose) printf("Received: %i bytes\n",ret);
-					int msg_c = buf_c[i] / MSG_SIZE;
-					for (j=0;j<msg_c;j++)
-						process_msg(buf[i] + (MSG_SIZE*j)); 
+				} else {
+					buf_c[i] += ret;
+					if (verbose) printf("Received: %i bytes. Buf size: %i\n",ret,buf_c[i]);
+				}
 
-					for (j=0;j<buf_c[i] % MSG_SIZE;j++)
-						buf[i][j] = buf[i][msg_c*MSG_SIZE + j];
-					buf_c[i] = buf_c[i] % MSG_SIZE;
+				if (buf_c[i]>=MSG_SIZE) {
+
+					int msg_c = buf_c[i] / MSG_SIZE; //number of messages in buffer
+					int msg_r = buf_c[i] % MSG_SIZE; //reminder
+
+					for (j=0;j<msg_c;j++) 
+						process_msg(buf[i] + (j*MSG_SIZE),NULL);
+
+					for (j=0;j<msg_r;j++)
+						buf[i][j] = buf[i][j+msg_c*MSG_SIZE];
+					buf_c[i] = msg_r;
 				}
 			}
 		}
-		//send out any available message to clients
+		//send out any available messages to clients
 		for (int j=0;j<spi_buf_c;j++) {
 			if (verbose) printf("To clients: t: %u v: %i\n",spi_buf[j].t,spi_buf[j].v);
 			bufout[0] = 0;
 			bufout[1] = spi_buf[j].t;
 			packi16(bufout+2,spi_buf[j].v);
-			for (int k=0;k<MAX_CLIENTS;k++) {
+			for (int k=0;k<MAX_TCP_CLIENTS;k++) {
 				if (sock[k+1]!=0) { 
 					ret = send(sock[k+1], bufout, 4, MSG_NOSIGNAL );
 					if (ret == -1) {
@@ -239,16 +351,25 @@ int main(int argc, char **argv)
 					}
 				}
 			}
+			for (int k=0;k<MAX_UDP_CLIENTS;k++) {
+				if (uclients[k]>0) { 
+					ret = sendto(usock,bufout,4,0,(struct sockaddr *)&uaddress[k],addrlen);
+					if (ret<0) {
+						printf("Error sending datagram packet\n");
+						uclients[k] = 0;
+					}
+				}
+			}
 		}
 		spi_buf_c = 0;
 
-		//ping if needed
-		clock_gettime(CLOCK_REALTIME, &time_now);
-		dt = TimeSpecDiff(&time_now,&time_prev);
+		//ping avr if needed
+		clock_gettime(CLOCK_REALTIME, &spi_time_now);
+		dt = TimeSpecDiff(&spi_time_now,&spi_time_prev);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
-		if (dt_ms>MSG_PERIOD) {
-			time_prev = time_now;
-			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v); //ping
+		if (dt_ms>=MSG_PERIOD) {
+			spi_time_prev = spi_time_now;
+			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
 			msg_counter = 0;
 		}
 	}
@@ -256,7 +377,7 @@ int main(int argc, char **argv)
 	if (echo) spi_close();
 
 	bufout[0] = 1; //disconnect msg
-	for (int k=0;k<MAX_CLIENTS;k++) {
+	for (int k=0;k<MAX_TCP_CLIENTS;k++) {
 		if (sock[k+1]!=0) 
 			send(sock[k+1], bufout, 4, MSG_NOSIGNAL );
 	}
@@ -268,8 +389,10 @@ int main(int argc, char **argv)
 		fflush(NULL);
 	}
 
-	for (i=0;i<MAX_CLIENTS+1;i++)
+	for (i=0;i<MAX_TCP_CLIENTS+1;i++)
 		if (sock[i]!=0) close(sock[i]);
+
+	close(usock);
 
 }
 

@@ -11,21 +11,9 @@ unsigned int unpacki16(unsigned char *buf)
 }
 
 void mssleep(unsigned int ms) {
-  struct timeval timeout;
-
-  timeout.tv_sec = ms/1000;
-  timeout.tv_usec = (ms % 1000)*1000L;
-   
-   if (select(0,NULL,NULL,NULL,&timeout)<0 )
-   {
-      printf("Select sleep system call failed \n");
-   }
-}
-void mssleep1(unsigned int ms) {
   struct timespec tim, tim2;
    tim.tv_sec = ms/1000;
    tim.tv_nsec = 1000000L * (ms % 1000);
-   
    if(nanosleep(&tim , &tim2) < 0 )
    {
       printf("Nano sleep system call failed \n");
