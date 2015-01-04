@@ -2,9 +2,7 @@
 #define QCONFIG_H
 
 struct s_config {
-    int log_seq,log_t,cam_seq;
-    int rec_t[3]; //t min, t_max, t inflight
-    int rec_ypr[2][3]; //y, p, r
+    int throttle_min, throttle_inflight;
     int s_pid[3][5]; //y,p,r + [max,imax,kp,ki,kd]
     int r_pid[3][5];
     int a_pid[1]; //acro_p
@@ -20,8 +18,6 @@ struct s_config {
 extern struct s_config config;
 
 int config_open(const char *path);
-
-int config_save();
 
 
 #endif

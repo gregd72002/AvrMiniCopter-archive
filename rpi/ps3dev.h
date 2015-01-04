@@ -1,5 +1,5 @@
-#ifndef PS3CONTROLLER_H
-#define PS3CONTROLLER_H
+#ifndef PS3DEV_H
+#define PS3DEV_H
 
 struct s_rec {
     int yprt[4];

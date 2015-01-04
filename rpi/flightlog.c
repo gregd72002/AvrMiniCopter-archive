@@ -1,7 +1,7 @@
 #include "flightlog.h"
 #include <string.h>
 #include <stdio.h>
-#include "config.h"
+#include "ps3config.h"
 
 struct s_flog flog[MAX_LOG];
 
@@ -13,8 +13,8 @@ static const char *_path;
 static struct s_flog *ptr;
 
 int flog_reset() {
-	sprintf(p,"%s/flight-%05d.t%i.log%c",_path,config.log_seq,config.log_t,'\0');
-	config.log_seq++;
+	sprintf(p,"%s/flight-%05d.t%i.log%c",_path,ps3config.log_seq,ps3config.log_t,'\0');
+	ps3config.log_seq++;
 	ptr = flog;
 	buf_overrun = 0;
 	m_val = 0;

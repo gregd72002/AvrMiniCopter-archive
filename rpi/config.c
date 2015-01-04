@@ -14,17 +14,7 @@ int config_open(const char *path) {
 
     if (state ==0) {
 
-	if (fscanf(f,"%i\t%i\t%i\n",&config.log_seq,&config.log_t,&config.cam_seq)!=3) state = 1;
-
-	for (int i=0;i<3 && !state;i++) 
-            if (fscanf(f,"%i\t",&config.rec_t[i])!=1) state = 1;
-        if (fscanf(f,"\n")<0) state=1;
-
-        for (int i=0;i<2 && !state;i++) { 
-            for (int j=0;j<3 && !state;j++) 
-                if (fscanf(f,"%i\t",&config.rec_ypr[i][j])!=1) state = 1;
-            if (fscanf(f,"\n")<0) state=1;
-        }
+    	if (fscanf(f,"%i\t%i\n",&config.throttle_min,&config.throttle_inflight)!=1) state = 1;
 
         for (int i=0;i<3 && !state;i++) {
             for (int j=0;j<5 && !state;j++)
@@ -70,18 +60,8 @@ int config_open(const char *path) {
     if (state) {
         printf("No config file or config syntax issue. New will be created!\n");
         //some default values if no config file
-	config.log_seq = 0;
-	config.cam_seq = 0;
-	config.log_t = 0;
-        config.rec_ypr[0][0] = 135;
-        config.rec_ypr[0][1] = 30;
-        config.rec_ypr[0][2] = 30;
-        config.rec_ypr[1][0] = 135;
-        config.rec_ypr[1][1] = 45;
-        config.rec_ypr[1][2] = 45;
-        config.rec_t[0] = 1000;
-        config.rec_t[1] = 2000;
-        config.rec_t[2] = 1100;
+        config.throttle_min = 1000;
+        config.throttle_inflight = 1100;
         for (int i=0;i<3;i++) {
             for (int j=0;j<5;j++) 
                 config.s_pid[i][j] = config.r_pid[i][j] = 0;
@@ -135,68 +115,4 @@ int config_open(const char *path) {
 
     return 0; 
 }
-
-int config_save() {
-    f = fopen(p,"w");
-    if (f == NULL) {
-        printf("Error saving config file.\n");
-        return -1;
-    }
-
-	fprintf(f,"%i\t%i\t%i\n",config.log_seq,config.log_t,config.cam_seq);
-
-    for (int j=0;j<3;j++)
-        fprintf(f,"%i\t",config.rec_t[j]);
-    fprintf(f,"\n");
-
-    for (int i=0;i<2;i++) {
-        for (int j=0;j<3;j++)
-            fprintf(f,"%i\t",config.rec_ypr[i][j]);
-        fprintf(f,"\n");
-    }
-
-    for (int i=0;i<3;i++) {
-        for (int j=0;j<5;j++)
-            fprintf(f,"%i\t",config.r_pid[i][j]);
-        fprintf(f,"\n");
-    }
-
-    for (int i=0;i<3;i++) { 
-        for (int j=0;j<5;j++)
-            fprintf(f,"%i\t",config.s_pid[i][j]);
-        fprintf(f,"\n");
-    }
-    for (int j=0;j<5;j++)
-        fprintf(f,"%i\t",config.alt_pid[j]);
-    fprintf(f,"\n");
-
-    for (int j=0;j<5;j++)
-        fprintf(f,"%i\t",config.vz_pid[j]);
-    fprintf(f,"\n");
-
-    for (int j=0;j<5;j++)
-        fprintf(f,"%i\t",config.accel_pid[j]);
-    fprintf(f,"\n");
-
-    fprintf(f,"%i\t%i",config.a_pid[0],config.baro_f);
-    fprintf(f,"\n");
-
-	for (int i=0;i<9;i++)
-	    fprintf(f,"%i\t",config.gyro_orient[i]);
-    fprintf(f,"\n");
-
-    for (int i=0;i<4;i++)
-        fprintf(f,"%i\t",config.motor_pin[i]);
-    fprintf(f,"\n");
-
-    fprintf(f,"%i\t",config.mpu_addr);
-
-
-    fflush(NULL);
-
-    fclose(f);
-
-    return 0;
-}
-
 

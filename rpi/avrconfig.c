@@ -22,6 +22,7 @@
 #include "routines.h"
 #include "msg.h"
 
+#define MSG_SIZE 4
 int ret;
 int err = 0;
 int stop = 0;
@@ -50,10 +51,24 @@ int sendMsg(int t, int v) {
 	return 0;
 }
 
-void recvMsgs() {
-	static int sel=0,i=0,ret=0;
-	static unsigned char buf[4];
+void processMsg(unsigned char *buf) {
 	static struct s_msg m;
+	if (buf[0] == 1) {
+		if (verbose) printf("AVRCONFIG: Disconnect request.\n");
+		stop = 1;	
+	} else {
+		m.t = buf[1];
+		m.v = unpacki16(buf+2);
+		switch (m.t) {
+			case 255: avrstatus = m.v;
+			case 254: avrcrcerrors = m.v;
+		}
+	}
+}
+
+void recvMsgs() {
+	static int sel=0,i=0,ret=0,j;
+	static unsigned char buf[64];
 
 	static fd_set fds;
 	static struct timeval timeout;
@@ -69,35 +84,26 @@ void recvMsgs() {
 			stop=1;
 		}
 		else if (sel && !stop && FD_ISSET(sock, &fds)) {
-			ret = read(sock,buf+i,4-i);
+			ret = read(sock,buf+i,64-i);
 			if (ret<0) {
 				perror("reading");
 				stop = 1;
 			}
 			else {
 				i+=ret;
-				if (i==4) {
-					if (buf[0] == 1) {
-						if (verbose) printf("AVRCONFIG: Disconnect request.\n");
-						stop = 1;	
-					} else {
-						m.t = buf[1];
-						m.v = unpacki16(buf+2);
-						switch (m.t) {
-							case 255: avrstatus = m.v;
-							case 254: avrcrcerrors = m.v;
-						}
-						i = 0;
-					}
-				}
+				int msg_no = ret / MSG_SIZE;
+				int reminder = ret % MSG_SIZE;
+				for (j=0;j<msg_no;j++)
+					processMsg(buf+j*MSG_SIZE);
+				for (j=0;j<reminder;j++)
+					buf[j] = buf[msg_no*MSG_SIZE+j];
+				i = reminder;
 			}
 		}
 	} while (!stop && sel && ret>0); //no error happened; select picked up socket state change; read got some data back
 }
 
 void sendConfig() {
-	sendMsg(2,config.log_t);
-
 	sendMsg(3,0); //initial mode 
 
 	int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
@@ -105,8 +111,8 @@ void sendConfig() {
 
 	sendMsg(9,config.mpu_addr);
 
-	sendMsg(17,config.rec_t[0]);
-	sendMsg(18,config.rec_t[2]);
+	sendMsg(17,config.throttle_min);
+	sendMsg(18,config.throttle_inflight);
 
 	for (int i=0;i<4;i++) 
 		sendMsg(5+i,config.motor_pin[i]);
@@ -184,7 +190,7 @@ void loop() {
 				case 2: break; //AVR should arm motors and set status to 3
 				case 3: break; //AVR is initializing MPU 
 				case 4: break; //AVR is calibration gyro
-				case 5: break;
+				case 5: printf("Initialization OK.\n"); break;
 				case 255: printf("AVRCONFIG: Gyro calibration failed!\n"); reset_avr(); avrstatus = 0; break; //calibration failed
 				default: printf("AVRCONFIG: Unknown AVR status %i\n",avrstatus); break;
 			}
@@ -253,14 +259,15 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-        if (background) {
-                if (daemon(0,1) < 0) {
-                        perror("AVRCONFIG: daemon");
-                        return -1;
-                }
-                if (verbose) printf("AVRCONFIG: Running in the background\n");
-        }
+	if (background) {
+		if (daemon(0,1) < 0) {
+			perror("AVRCONFIG: daemon");
+			return -1;
+		}
+		if (verbose) printf("AVRCONFIG: Running in the background\n");
+	}
 
+	reset_avr();
 	loop();
 
 	close(sock);

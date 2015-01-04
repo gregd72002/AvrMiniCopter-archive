@@ -13,10 +13,10 @@
 #include <inttypes.h>
 
 #ifndef SCNu8
-	#define SCNu8 "hhu"
+#define SCNu8 "hhu"
 #endif
 #ifndef SCNi16
-	#define SCNi16 "hi"
+#define SCNi16 "hi"
 #endif
 
 int stop = 0;
@@ -40,6 +40,18 @@ void print_msg(unsigned char *buf) {
 	m.v = unpacki16(buf+1);
 	printf("Recieved t: %u v: %i\n",m.t,m.v);
 }
+void processMsg(unsigned char *buf) {
+	if (buf[0] == 1) {
+		printf("Disconnect request.\n");
+		stop = 1;
+	} else {
+		print_msg(buf+1);	
+	}
+}
+
+
+#define MSG_SIZE 4
+#define MAX_BUF 64
 
 int main(int argc, char **argv)
 {
@@ -48,7 +60,7 @@ int main(int argc, char **argv)
 	struct hostent *server;
 	int portno = 1030;
 	struct s_msg msg;
-	unsigned char buf1[4];
+	unsigned char buf1[MAX_BUF]; //receiving buffer
 	char buf2[256];
 	int b1,b2,cmd;
 	int c = 0;
@@ -89,16 +101,16 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	server = gethostbyname(sock_path);
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-	return -1;
-    }
-        bzero((char *) &address, sizeof(address));
-        address.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, 
-         (char *)&address.sin_addr.s_addr,
-         server->h_length);
-        address.sin_port = htons(portno);
+	if (server == NULL) {
+		fprintf(stderr,"ERROR, no such host\n");
+		return -1;
+	}
+	bzero((char *) &address, sizeof(address));
+	address.sin_family = AF_INET;
+	bcopy((char *)server->h_addr, 
+			(char *)&address.sin_addr.s_addr,
+			server->h_length);
+	address.sin_port = htons(portno);
 	/* Construct name of socket to send to. */
 	/* Send message. */
 
@@ -138,21 +150,20 @@ int main(int argc, char **argv)
 			stop=1;
 		}
 		if (!stop && FD_ISSET(sock, &fds)) {
-			ret = read(sock, buf1+b1,4-b1);
+			ret = read(sock, buf1+b1,MAX_BUF-b1);
 			if (ret<=0) {
 				perror("reading");
 				stop = 1;
 			} else {
 				b1+=ret;
-				if (b1==4) {
-					if (buf1[0] == 1) {
-						printf("Disconnect request.\n");
-						stop = 1;
-					} else {
-						print_msg(buf1+1);	
-					}
-					b1 = 0;
-				}
+				int msg_no = ret / MSG_SIZE;
+				int reminder = ret % MSG_SIZE;
+				int i;
+				for (i=0;i<msg_no;i++)
+					processMsg(buf1+i*MSG_SIZE);
+				for (i=0;i<reminder;i++)
+					buf1[i] = buf[msg_no*MSG_SIZE+i];
+				b1 = reminder;
 			}
 		}
 		if (!stop && FD_ISSET(STDIN_FILENO,&fds)) {

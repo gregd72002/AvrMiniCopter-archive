@@ -10,9 +10,9 @@ install:
 	$(MAKE) -C $(KERNEL_SRC) M=$(PWD) modules_install
 
 clean:
-	rm *.ko
-	rm *.o
-	rm *.mod.c
-	rm -rdf .*
-	rm modules.order
-	rm Module.symvers
+	rm -f *.ko
+	rm -f *.o
+	rm -f *.mod.c
+	#rm -rdf .*
+	rm -f modules.order
+	rm -f Module.symvers
