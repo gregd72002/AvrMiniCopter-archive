@@ -12,12 +12,13 @@ int ps3config_open(struct ps3_config *config,const char *path) {
     f = fopen(p,"r");
     if (f == NULL) state = 1; 
 
-    if (state ==0) {
+    printf("Opening config: %s\n",path);
 
+    if (state ==0) {
 	if (fscanf(f,"%i\t%i\t%i\n",&config->log_seq,&config->log_t,&config->cam_seq)!=3) state = 1;
 
 
-	if (fscanf(f,"%i\t%i\n",&config->throttle[0],&config->throttle[1])!=1) state = 1;
+	if (fscanf(f,"%i\t%i\n",&config->throttle[0],&config->throttle[1])!=2) state = 1;
 
         for (int i=0;i<2 && !state;i++) { 
             for (int j=0;j<3 && !state;j++) 
@@ -30,7 +31,8 @@ int ps3config_open(struct ps3_config *config,const char *path) {
     }
 
     if (state) {
-        printf("No config file or config syntax issue. New will be created!\n");
+        printf("No config file or config syntax issue.\n");
+	return -1;
         //some default values if no config file
 	config->log_seq = 0;
 	config->cam_seq = 0;
