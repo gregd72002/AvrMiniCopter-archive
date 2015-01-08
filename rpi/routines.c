@@ -10,6 +10,12 @@ unsigned int unpacki16(unsigned char *buf)
     return (buf[0]<<8) | buf[1];
 }
 
+unsigned int unpacku16(unsigned char *buf)
+{
+	return ((unsigned int)buf[0]<<8) | buf[1];
+}
+
+
 void mssleep(unsigned int ms) {
   struct timespec tim, tim2;
    tim.tv_sec = ms/1000;
@@ -30,5 +36,27 @@ struct timespec *TimeSpecDiff(struct timespec *ts1, struct timespec *ts2)
                 ts.tv_nsec += 1000000000;
         }
         return &ts;
+}
+
+void local2avr(struct local_msg *lm, struct avr_msg *am) {
+        am->t = lm->t;
+        am->v = lm->v;
+}
+
+void avr2local(struct avr_msg *am, struct local_msg *lm) {
+        lm->t = am->t;
+        lm->v = am->v;
+}
+
+void pack_lm(unsigned char *buf,struct local_msg *m) {
+	buf[0] = m->c;	
+	buf[1] = m->t;	
+	packi16(buf+2,m->v);
+}
+
+void unpack_lm(unsigned char *buf,struct local_msg *m) {
+	m->c = buf[0];
+	m->t = buf[1];
+	m->v = unpacki16(buf+2);
 }
 

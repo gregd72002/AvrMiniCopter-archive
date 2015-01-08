@@ -22,8 +22,8 @@ OBJ_AVRBARO=avrbaro.o routines.o bmpsensor/libbs.a libs/libi2cdev.a
 
 all: _websockify ps3controller avrspi avrconfig avrspi_cmd avrbaro _remote
 
-modules:
-	$(MAKE) -C spi-bcm2708-dma/
+#modules:
+#	$(MAKE) -C spi-bcm2708-dma/
 
 _websockify:
 	$(MAKE) -C websockify/
@@ -70,7 +70,7 @@ clean:
 	cd libs/i2cdev && $(MAKE) clean
 	cd websockify && $(MAKE) clean
 	cd remote && $(MAKE) clean
-	cd spi-bcm2708-dma && $(MAKE) clean
+#	cd spi-bcm2708-dma && $(MAKE) clean
 	rm -rf ps3controller 
 	rm -rf avrspi_cmd
 	rm -rf avrspi 

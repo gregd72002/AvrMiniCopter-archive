@@ -9,11 +9,13 @@
 #include <stdio.h>
 #include <getopt.h>
 #include "routines.h"
-#include "msg.h"
 #include <inttypes.h>
 
 #ifndef SCNu8
 #define SCNu8 "hhu"
+#endif
+#ifndef SCNu16
+#define SCNu16 "hu"
 #endif
 #ifndef SCNi16
 #define SCNi16 "hi"
@@ -34,23 +36,15 @@ void catch_signal(int sig)
 	stop = 1;
 }
 
-void print_msg(unsigned char *buf) {
-	struct s_msg m;
-	m.t = buf[0];
-	m.v = unpacki16(buf+1);
-	printf("Recieved t: %u v: %i\n",m.t,m.v);
-}
-void processMsg(unsigned char *buf) {
-	if (buf[0] == 1) {
+void processMsg(struct local_msg *m) {
+	if (m->c == 1) {
 		printf("Disconnect request.\n");
 		stop = 1;
 	} else {
-		print_msg(buf+1);	
+		printf("Recieved t: %u v: %i\n",m->t,m->v);
 	}
 }
 
-
-#define MSG_SIZE 4
 #define MAX_BUF 64
 
 int main(int argc, char **argv)
@@ -59,7 +53,7 @@ int main(int argc, char **argv)
 	struct sockaddr_in address;
 	struct hostent *server;
 	int portno = 1030;
-	struct s_msg msg;
+	struct local_msg msg;
 	unsigned char buf1[MAX_BUF]; //receiving buffer
 	char buf2[256];
 	int b1,b2,cmd;
@@ -69,7 +63,7 @@ int main(int argc, char **argv)
 	struct timeval timeout;
 	int listen = 0;
 	int ret;
-	unsigned char buf[3];
+	unsigned char buf[LOCAL_MSG_SIZE];
 	char sock_path[32] = "127.0.0.1";
 	msg.t = 0;
 	msg.v = 0;
@@ -123,9 +117,9 @@ int main(int argc, char **argv)
 	}
 	if (c) {
 		printf("Sending message t: %u v: %i\n",msg.t,msg.v);
-		buf[0] = msg.t;
-		packi16(buf+1,msg.v);
-		if (write(sock, buf, 3) < 0)
+		msg.c = 0;	
+		pack_lm(buf,&msg);
+		if (write(sock, buf, LOCAL_MSG_SIZE) < 0)
 			perror("writing");
 	}
 
@@ -154,16 +148,22 @@ int main(int argc, char **argv)
 			if (ret<=0) {
 				perror("reading");
 				stop = 1;
-			} else {
+			} else 	{
 				b1+=ret;
-				int msg_no = ret / MSG_SIZE;
-				int reminder = ret % MSG_SIZE;
+				printf("Got %i %i\n",ret,b1);
+				int msg_no = b1 / LOCAL_MSG_SIZE;
+				int reminder = b1 % LOCAL_MSG_SIZE;
 				int i;
-				for (i=0;i<msg_no;i++)
-					processMsg(buf1+i*MSG_SIZE);
-				for (i=0;i<reminder;i++)
-					buf1[i] = buf[msg_no*MSG_SIZE+i];
-				b1 = reminder;
+				for (i=0;i<msg_no;i++) {
+					unpack_lm(buf1+i*LOCAL_MSG_SIZE,&msg);
+					processMsg(&msg);
+				}
+
+				if (msg_no) {
+					for (i=0;i<reminder;i++)
+						buf1[i] = buf1[msg_no*LOCAL_MSG_SIZE+i];
+					b1 = reminder;
+				}
 			}
 		}
 		if (!stop && FD_ISSET(STDIN_FILENO,&fds)) {
@@ -177,10 +177,10 @@ int main(int argc, char **argv)
 			if (cmd) {
 				ret = sscanf(buf2,"%" SCNu8 "%" SCNi16 "\n",&msg.t,&msg.v);
 				if ((ret == 2) && (b2>3)) {
-					buf[0] = msg.t;
-					packi16(buf+1,msg.v);
+					msg.c = 0;
 					printf("Sending t: %u v: %i\n",msg.t,msg.v);
-					if (write(sock, buf, 3) < 0)
+					pack_lm(buf,&msg);
+					if (write(sock, buf, LOCAL_MSG_SIZE) < 0)
 						perror("writing");
 				} else printf("Error paring. Enter 2 arguments: type and value\n");
 			}

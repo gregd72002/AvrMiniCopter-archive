@@ -20,9 +20,7 @@
 #include "mpu.h"
 
 #include "routines.h"
-#include "msg.h"
 
-#define MSG_SIZE 4
 int ret;
 int err = 0;
 int stop = 0;
@@ -41,10 +39,13 @@ int background = 0;
 int delay = 1000;
 
 int sendMsg(int t, int v) {
-	static unsigned char buf[3];
-	buf[0] = t;
-	packi16(buf+1,v);
-	if (write(sock, buf, 3) < 0) {
+	static unsigned char buf[4];
+	static struct local_msg m;
+	m.c = 0;
+	m.t = t;
+	m.v = v;
+	pack_lm(buf,&m);
+	if (write(sock, buf, LOCAL_MSG_SIZE) < 0) {
 		perror("writing");
 		return -1;
 	}
@@ -52,7 +53,7 @@ int sendMsg(int t, int v) {
 }
 
 void processMsg(unsigned char *buf) {
-	static struct s_msg m;
+	static struct avr_msg m;
 	if (buf[0] == 1) {
 		if (verbose) printf("AVRCONFIG: Disconnect request.\n");
 		stop = 1;	
@@ -91,12 +92,12 @@ void recvMsgs() {
 			}
 			else {
 				i+=ret;
-				int msg_no = ret / MSG_SIZE;
-				int reminder = ret % MSG_SIZE;
+				int msg_no = ret / LOCAL_MSG_SIZE;
+				int reminder = ret % LOCAL_MSG_SIZE;
 				for (j=0;j<msg_no;j++)
-					processMsg(buf+j*MSG_SIZE);
+					processMsg(buf+j*LOCAL_MSG_SIZE);
 				for (j=0;j<reminder;j++)
-					buf[j] = buf[msg_no*MSG_SIZE+j];
+					buf[j] = buf[msg_no*LOCAL_MSG_SIZE+j];
 				i = reminder;
 			}
 		}

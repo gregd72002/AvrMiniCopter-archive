@@ -27,8 +27,8 @@
 
 int msg_counter = 0;
 
-#define OUT_TCP_MSG_SIZE 4
-#define IN_TCP_MSG_SIZE 3
+struct local_msg local_buf[64]; 
+int local_buf_c=0;
 
 #define BUF_SIZE 64
 
@@ -97,52 +97,88 @@ int udp_add_client(struct sockaddr_in *c) {
 	return i;
 }
 
-void ping_back(unsigned char *b, struct sockaddr_in *c) {
-	static char buf[5];
-	int tmp,ret;
-	buf[0] = 1;
-	memcpy(&tmp,b,4);
-	tmp = ntohl(tmp);
+void ping_back(struct local_msg *m, struct sockaddr_in *c) {
+	static unsigned char buf[LOCAL_MSG_SIZE];
+	int ret;
 
-	if (verbose) printf("AVRSPI: Responding to ping %i\n",tmp);
+	if (verbose) printf("AVRSPI: Responding to ping %i\n",m->v);
 
+	pack_lm(buf,m);
 
-	tmp = htonl(tmp);
-	memcpy(buf+1,&tmp,4);
-
-	ret = sendto(usock,buf,5,0,(struct sockaddr *)c,addrlen);
-
+	ret = sendto(usock,buf,LOCAL_MSG_SIZE,0,(struct sockaddr *)c,addrlen);
 	if (ret<0) {
 		printf("AVRSPI: Error sending ping response\n");
 	}
 }
 
-void process_msg(unsigned char *b,struct sockaddr_in *addr) {
-	struct s_msg m;
-	m.t = b[0];
-	m.v = unpacki16(b+1);
+void process_msg_l(struct local_msg *m) {
+	switch (m->v) {
+		case 0: break;
+		case 1: 
+			if (verbose) printf("Reset AVR\n");
+			linuxgpio_initpin(25);
+			linuxgpio_highpulsepin(25,500);
+			linuxgpio_close();
+		break;
+		case 2: //get number of SPI errors 
+			struct local_msg lm;
+			lm.t = 253; lm.v=spi_crc_err;
+			local_buf[local_buf_c++] = lm;
+			printf("%u %i\n",lm.t,lm.v);
+			break;
+		//case 10: start_flog(); return head_len; break;
+		//case 11: stop_flog(); return head_len; break;
+		default: printf("Unknown local message: %u\n",m->v);
+	}
+}
 
+void process_msg(struct local_msg *m) {
+	static struct avr_msg am;
 	if (echo) 
-		spi_buf[spi_buf_c++] = m;
+		local_buf[local_buf_c++] = *m;
 
-	if (m.t == 0) {
-		if (verbose) printf("Skipping msg t: %u v: %i\n",m.t,m.v);
-	} else if (m.t == 255 && m.v == 255) { //REBOOT AVR
-		if (verbose) printf("Reset AVR\n");
-		linuxgpio_initpin(25);
-		linuxgpio_highpulsepin(25,500);
-		linuxgpio_close();
-		//mssleep(1500);
-	}
-	else if (m.t == 255 && m.v == 256) {
-		m.t = 253; m.v=spi_crc_err;
-		spi_buf[spi_buf_c++] = m;
-	}
+	if (m->t == 0) process_msg_l(m);
 	else {
-		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m.t,m.v);
-		if (spi) spi_sendIntPacket(m.t,&m.v);
+		if (verbose) printf("Forwarding to AVR t: %u v: %i\n",m->t,m->v);
+		if (spi) {
+			local2avr(m,&am);
+			spi_sendMsg(&am);
+		}
 		clock_gettime(CLOCK_REALTIME, &spi_last_msg);	
 		msg_counter++;
+	}
+}
+
+void process_udp_msg(struct local_msg *m, struct sockaddr_in *addr) {
+	int i;
+	switch (m->c) {
+		case 0: process_msg(m); break;
+		case 1: case 2: 
+			i = udp_check_client(&tmpaddress);
+			if (i<0) { //new client
+				i=udp_add_client(&tmpaddress);
+			}
+			if (m->c==2) ping_back(m,addr);
+			else process_msg(m);
+			break;
+		default: printf("Unknown UDP control: %u\n",m->c);
+	}
+}
+
+void process_tcp_queue(int client) {
+	int msg_c = buf_c[client] / LOCAL_MSG_SIZE;
+	int msg_r = buf_c[client] % LOCAL_MSG_SIZE;
+	struct local_msg m;
+
+	for (int i=0;i<msg_c;i++) {
+		unpack_lm(buf[client]+i*LOCAL_MSG_SIZE,&m);
+		process_msg(&m);
+	}
+
+	if (msg_c) {
+		for (int i=0;i<msg_r;i++)
+			buf[client][i] = buf[client][msg_c*LOCAL_MSG_SIZE+i];
+		buf_c[client] = msg_r;
 	}
 }
 
@@ -150,6 +186,7 @@ void print_usage() {
 	printf("-d run in background\n");
 	printf("-e run echo mode (useful for debugging)\n");
 	printf("-f do not do SPI (useful for debugging)\n");
+	printf("-v [level] verbose level\n");
 	printf("-p [port] port to listen on (defaults to %i)\n",portno);
 }
 
@@ -162,7 +199,7 @@ int main(int argc, char **argv)
 	/* END SELECT */
 	int i,j,ret;
 	unsigned char bufout[BUF_SIZE];
-	struct s_msg dummy_msg = {t: 255, v: 254};
+	struct avr_msg dummy_msg = {t: 255, v: 254};
 	long dt_ms = 0;
 
 	clock_gettime(CLOCK_REALTIME, &spi_time_prev);
@@ -176,10 +213,11 @@ int main(int argc, char **argv)
 	verbose = 1;
 	background = 0;
 	echo = 0;
-	while ((option = getopt(argc, argv,"dep:f")) != -1) {
+	while ((option = getopt(argc, argv,"dep:fv:")) != -1) {
 		switch (option)  {
 			case 'd': background = 1; verbose=0; break;
 			case 'p': portno = atoi(optarg);  break;
+			case 'v': verbose = atoi(optarg);  break;
 			case 'f': spi=0; break;
 			case 'e': echo=1; break;
 			default:
@@ -291,31 +329,12 @@ int main(int argc, char **argv)
 			if (ret<=0) {
 				printf("UDP recvfrom error? %i\n",ret);
 			} else {
-				if (verbose) printf("UDP received %d bytes\n", ret);
-				int c = 0;
-				while (c<ret) {
-					unsigned char t = ubuf[c];
-					if (t==0) { //message, but dont add client to the list
-						process_msg(ubuf+c+1,&tmpaddress);
-						c+=4;
-					} else if (t==1) { //msg
-						process_msg(ubuf+c+1,&tmpaddress);
-						i = udp_check_client(&tmpaddress);
-						if (i<0) { //new client
-							i=udp_add_client(&tmpaddress);
-						}
-						c+=4;
-					}
-					else if (t==2) { //keep alive ping
-						i = udp_check_client(&tmpaddress);
-						if (i<0) { //new client
-							i=udp_add_client(&tmpaddress);
-						}
-						ping_back(ubuf+c+1,&tmpaddress);
-						c+=5;
-					} else {
-						printf("Unknown UDP message t: %i len: %i\n",t,ret);
-					}
+				int msg_c = ret / LOCAL_MSG_SIZE;
+				if (verbose) printf("UDP received %i msgs\n", msg_c);
+				for (i=0;i<msg_c;i++) { 
+					struct local_msg m;
+					unpack_lm(ubuf+i*LOCAL_MSG_SIZE,&m);
+					process_udp_msg(&m,&tmpaddress); 
 				}
 			}
 		}
@@ -352,60 +371,53 @@ int main(int argc, char **argv)
 					close(sock[i+1]);
 					sock[i+1] = 0;
 					buf_c[i] = 0;
-				} else {
+				} else { //got data
 					buf_c[i] += ret;
 					if (verbose) printf("Received: %i bytes. Buf size: %i\n",ret,buf_c[i]);
-				}
-
-				if (buf_c[i]>=IN_TCP_MSG_SIZE) {
-
-					int msg_c = buf_c[i] / IN_TCP_MSG_SIZE; //number of messages in buffer
-					int msg_r = buf_c[i] % IN_TCP_MSG_SIZE; //reminder
-
-					for (j=0;j<msg_c;j++) 
-						process_msg(buf[i] + (j*IN_TCP_MSG_SIZE),NULL);
-
-					for (j=0;j<msg_r;j++)
-						buf[i][j] = buf[i][j+msg_c*IN_TCP_MSG_SIZE];
-					buf_c[i] = msg_r;
+					process_tcp_queue(i);
 				}
 			}
 		}
 		//send out any available messages to clients
-
-		if (spi_buf_c*OUT_TCP_MSG_SIZE>BUF_SIZE) {
-			printf("output buffer overflow (bufout)!");
-			spi_buf_c = 0;
-		}
-
-		for (int j=0;j<spi_buf_c;j++) {
-			if (verbose>=2) printf("To clients: t: %u v: %i\n",spi_buf[j].t,spi_buf[j].v);
-			bufout[j*OUT_TCP_MSG_SIZE] = 0;
-			bufout[j*OUT_TCP_MSG_SIZE+1] = spi_buf[j].t;
-			packi16(bufout+j*OUT_TCP_MSG_SIZE+2,spi_buf[j].v);
-		}
-		if (spi_buf_c>0 && verbose) printf("To clients msgs: %i bytes: %i\n",spi_buf_c,spi_buf_c*OUT_TCP_MSG_SIZE);
-		for (int k=0;k<MAX_TCP_CLIENTS;k++) {
-			if (sock[k+1]!=0) { 
-				ret = send(sock[k+1], bufout, spi_buf_c*OUT_TCP_MSG_SIZE, MSG_NOSIGNAL );
-				if (ret == -1) {
-					if (verbose) printf("Lost connection to client %i.\n",k);
-					close(sock[k+1]);
-					sock[k+1] = 0;
-				}
-			}
-		}
-		for (int k=0;k<MAX_UDP_CLIENTS;k++) {
-			if (uclients[k]>0) { 
-				ret = sendto(usock,bufout,OUT_TCP_MSG_SIZE,0,(struct sockaddr *)&uaddress[k],addrlen);
-				if (ret<0) {
-					printf("Error sending datagram packet\n");
-					uclients[k] = 0;
-				}
-			}
-		}
-
+		for (i=0;i<spi_buf_c;i++)
+			avr2local(&spi_buf[i],&local_buf[local_buf_c++]);
 		spi_buf_c = 0;
+
+		if (local_buf_c*LOCAL_MSG_SIZE>BUF_SIZE) {
+			printf("output buffer overflow (bufout)!");
+			local_buf_c = 0;
+		}
+
+		for (j=0;j<local_buf_c;j++) {
+			if (verbose>=2) printf("To clients: t: %u v: %i\n",local_buf[j].t,local_buf[j].v);
+			local_buf[j].c = 0;
+			pack_lm(bufout+j*LOCAL_MSG_SIZE,&local_buf[j]);
+		}
+
+		if (local_buf_c) {
+			if (verbose) printf("To clients msgs: %i bytes: %i\n",local_buf_c,local_buf_c*LOCAL_MSG_SIZE);
+			for (int k=0;k<MAX_TCP_CLIENTS;k++) {
+				if (sock[k+1]!=0) { 
+					ret = send(sock[k+1], bufout, local_buf_c*LOCAL_MSG_SIZE, MSG_NOSIGNAL );
+					if (ret == -1) {
+						if (verbose) printf("Lost connection to client %i.\n",k);
+						close(sock[k+1]);
+						sock[k+1] = 0;
+					}
+				}
+			}
+			for (int k=0;k<MAX_UDP_CLIENTS;k++) {
+				if (uclients[k]>0) { 
+					ret = sendto(usock,bufout,LOCAL_MSG_SIZE,0,(struct sockaddr *)&uaddress[k],addrlen);
+					if (ret<0) {
+						printf("Error sending datagram packet\n");
+						uclients[k] = 0;
+					}
+				}
+			}
+		}
+
+		local_buf_c = 0;
 
 		//ping avr if needed
 		clock_gettime(CLOCK_REALTIME, &spi_time_now);
@@ -413,7 +425,7 @@ int main(int argc, char **argv)
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 		if (dt_ms>=MSG_PERIOD) {
 			spi_time_prev = spi_time_now;
-			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendIntPacket(dummy_msg.t,&dummy_msg.v);
+			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendMsg(&dummy_msg);
 			msg_counter = 0;
 		}
 	}
@@ -423,7 +435,7 @@ int main(int argc, char **argv)
 	bufout[0] = 1; //disconnect msg
 	for (int k=0;k<MAX_TCP_CLIENTS;k++) {
 		if (sock[k+1]!=0) 
-			send(sock[k+1], bufout, OUT_TCP_MSG_SIZE, MSG_NOSIGNAL );
+			send(sock[k+1], bufout, LOCAL_MSG_SIZE, MSG_NOSIGNAL );
 	}
 
 	mssleep(1000);

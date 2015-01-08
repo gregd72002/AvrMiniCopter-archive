@@ -21,7 +21,6 @@
 #include "flightlog.h"
 
 #include "routines.h"
-#include "msg.h"
 
 struct s_rec js[2];
 
@@ -66,7 +65,7 @@ int sendMsg(int t, int v) {
 void recvMsgs() {
 	static int sel=0,i=0,ret=0;
 	static unsigned char buf[4];
-	static struct s_msg m;
+	static struct avr_msg m;
 
 	static fd_set fds;
 	static struct timeval timeout;

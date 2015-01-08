@@ -38,7 +38,7 @@ static int ret;
 static int fd;
 
 
-struct s_msg spi_buf[SPI_BUF_SIZE];
+struct avr_msg spi_buf[SPI_BUF_SIZE]; //reader buf
 int spi_buf_c = 0;
 
 int spi_crc_err = 0;
@@ -108,7 +108,7 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
     return ret;
 }
 
-void spi_sendMsg(struct s_msg *m) {
+void spi_sendMsg(struct avr_msg *m) {
     spi_sendIntPacket(m->t,&m->v);
 }
 

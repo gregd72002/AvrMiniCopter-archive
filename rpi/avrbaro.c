@@ -20,7 +20,6 @@
 #include "bmpsensor/bmp180.h"
 
 #include "routines.h"
-#include "msg.h"
 
 
 int ret;
@@ -39,10 +38,12 @@ int delay;
 
 int sendMsg(int t, int v) {
 	static unsigned char buf[4];
-	buf[1] = t;
-	packi16(buf+2,v);
-	buf[0] = 0;
-	ret = sendto(sock,buf,4,0,(struct sockaddr *)&address,sizeof(address));
+	static struct local_msg m;
+	m.c = 0;
+	m.t = t;
+	m.v = v;
+	pack_lm(buf,&m);
+	ret = sendto(sock,buf,LOCAL_MSG_SIZE,0,(struct sockaddr *)&address,sizeof(address));
 	if (ret<=0) {
 		perror("AVRBARO: writing");
 	}
