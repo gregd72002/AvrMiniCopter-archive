@@ -18,9 +18,11 @@
 
 #include "ps3config.h"
 #include "ps3dev.h"
-#include "flightlog.h"
 
 #include "routines.h"
+
+struct ps3_config ps3config;
+int verbose; 
 
 struct s_rec js[2];
 
@@ -29,8 +31,6 @@ int err = 0;
 int stop = 0;
 
 int avr_s[256];
-
-unsigned long flight_time = 0;
 
 int trim[3] = {0,0,0};//in degrees * 1000
 int mode = 0;
@@ -46,21 +46,30 @@ int portno = 1030;
 struct sockaddr_in address;
 struct hostent *server;
 
-int verbose = 0;
 int nocontroller = 0;
 
 int flight_threshold;
 
 int sendMsg(int t, int v) {
-	static unsigned char buf[3];
-	buf[0] = t;
-	packi16(buf+1,v);
-	if (write(sock, buf, 3) < 0) {
+        static unsigned char buf[4];
+        static struct local_msg m;
+        m.c = 0;
+        m.t = t;
+        m.v = v;
+        pack_lm(buf,&m);
+	if (write(sock, buf, 4) < 0) {
 		perror("writing");
 		return -1;
 	}
-	return 0;
+/*
+        ret = sendto(sock,buf,LOCAL_MSG_SIZE,0,(struct sockaddr *)&address,sizeof(address));
+        if (ret<=0) {
+                perror("AVRBARO: writing");
+        }
+*/
+        return 0;
 }
+
 
 void recvMsgs() {
 	static int sel=0,i=0,ret=0;
@@ -148,15 +157,8 @@ void do_adjustments(struct s_rec *js) {
 
 	switch (js->aux) {
 		case 8: //L2
-			memset(str, '\0', 128);
-			sprintf(str, "/usr/local/bin/vidsnap.sh %05d ", ps3config.cam_seq++);
-			ret=system(str);
 			break;
 		case 10: //L1
-			//take picture
-			memset(str, '\0', 128);
-			sprintf(str, "/usr/local/bin/picsnap.sh %05d ", ps3config.cam_seq++);
-			ret=system(str);
 			break;
 		case 11: //R1
 			if (alt_hold) {
@@ -169,11 +171,10 @@ void do_adjustments(struct s_rec *js) {
 			}
 			break;
 		case 0:
-			if (js[0].yprt[3]<flight_threshold) {flog_save(); sync(); fflush(NULL);}
+			if (js[0].yprt[3]<flight_threshold) sendMsg(0,4); 
 			break;
 		case 3: 
 			stop=1;
-			sendMsg(255,255); //send reset event before exiting
 			break;
 		case 12:
 			if (rec_setting) rec_setting = 0;
@@ -235,71 +236,6 @@ void catch_signal(int sig)
 long dt_ms = 0;
 static struct timespec ts,t1,t2,*dt;
 
-void log4() {
-	flog_push(5, 
-			(float)t2.tv_sec-ts.tv_sec
-			,(float)flight_time
-			,avr_s[18]/1.f,avr_s[19]/1.f,avr_s[20]/1.f
-		 );
-}
-
-void log4_print() {
-	printf("T: %li\ttarget_alt: %i\talt: %i\tvz: %i\tp_accel: %i\n",
-			flight_time,avr_s[18],avr_s[19],avr_s[20],avr_s[21]);
-}
-
-void log100_print() {
-	printf("T: %li\tvz: %i\tpos_err: %i\taccel_err: %i\tpid_alt: %i\tpid_vz: %i\tpid_accel: %i\n",
-			flight_time,avr_s[100],avr_s[101],avr_s[102],avr_s[103],avr_s[104],avr_s[105]);
-}
-
-void log3() {
-	flog_push(10, 
-			(float)t2.tv_sec-ts.tv_sec
-			,(float)flight_time
-			,avr_s[4]/100.0f,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f
-			,avr_s[8]/1.f,avr_s[9]/1.f,avr_s[10]/1.f
-			,avr_s[11]/1.f
-		 );
-}
-
-void log3_print() {
-	printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\tqy: %f\tqp: %f\tqr: %f\tyt: %f\ty: %f\n",
-			flight_time,avr_s[8],avr_s[9],avr_s[10],avr_s[11],
-			avr_s[4]/100.0f,avr_s[5]/100.0f,avr_s[6]/100.0f,avr_s[7]/100.0f,(avr_s[7]-avr_s[4])/100.0f
-	      );
-	printf("T: %li\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
-			flight_time,avr_s[10],avr_s[11],avr_s[12],avr_s[13]);
-}
-void log2() { //gyro & quat
-	flog_push(9, 
-			(float)t2.tv_sec-ts.tv_sec
-			,(float)flight_time
-			,avr_s[1]/100.0f,avr_s[2]/100.0f,avr_s[3]/100.0f
-			,avr_s[8]/1.f,avr_s[9]/1.f,avr_s[10]/1.f
-			,avr_s[11]/1.f
-		 );
-}
-
-void log2_print() {
-	printf("T: %li\tgy: %2.2f\tgp: %2.2f\tgr: %2.2f\tfl: %i\tbl: %i\tfr: %i\tbr: %i\n",
-			flight_time,avr_s[1]/100.0f,avr_s[2]/100.0f,avr_s[3]/100.0f,avr_s[8],avr_s[9],avr_s[10],avr_s[11]);
-}
-
-void log1() {
-	flog_push(8, 
-			(float)t2.tv_sec-ts.tv_sec
-			,(float)flight_time
-			,avr_s[12]/1000.0f,avr_s[13]/1000.0f,avr_s[14]/1000.0f
-			,avr_s[15]/1000.0f,avr_s[16]/1000.0f,avr_s[17]/1000.0f
-		 );
-}
-
-void log1_print() {
-	printf("T: %li\tax: %2.3f\t\ay: %2.3f\t\az: %2.3f\tbx: %2.3f\tby: %2.3f\tbz: %2.3f\n",
-			flight_time,avr_s[12]/1000.0f,avr_s[13]/1000.0f,avr_s[14]/1000.0f,avr_s[15]/1000.0f,avr_s[16]/1000.0f,avr_s[17]/1000.0f);
-}
-
 unsigned long k = 0;
 
 void loop() {
@@ -341,7 +277,7 @@ void loop() {
 			yprt[2] = js[0].yprt[3] = 1000;
 		}
 
-		if (alt_hold && abs(yprt[3]) > (ps3config.throttle[1]-50)) {
+		if (alt_hold && (yprt[3] > (ps3config.throttle[1]-50) || yprt[3] < ps3config.throttle[0]-50)) {
 			alt_hold = 0;
 			throttle_hold = 0;
 			sendMsg(15,alt_hold);
@@ -359,33 +295,6 @@ void loop() {
 		}
 		t1 = t2;
 
-		if (alt_hold || yprt[3]>ps3config.throttle[0]+50)
-			flight_time += dt_ms; 
-
-		switch(ps3config.log_t) {
-			case 0: break;
-			case 1: 
-				log1(); 
-				if (verbose==2) log1_print();
-				break;
-			case 2: 
-				log2(); 
-				if (verbose==2) log2_print();
-				break;
-			case 3: 
-				log3(); 
-				if (verbose==2) log3_print();
-				break;
-			case 4:
-				log4();
-				if (verbose==2) log4_print();
-				break;
-			case 100:
-				if (verbose==2) log100_print();
-				break;
-			default: break;
-		}
-
 		if (throttle_hold) {
 			yprt[3] = throttle_target;
 		}
@@ -396,6 +305,8 @@ void loop() {
 		sendMsg(13,yprt[3]);
 		recvMsgs();
 	}
+
+	sendMsg(13,ps3config.throttle[0]);
 }
 
 void print_usage() {
@@ -464,18 +375,12 @@ int main(int argc, char **argv) {
 
 
 
-	ret=ps3config_open(&ps3config,"/var/local/ps3.config");
+	ret=ps3config_open(&ps3config,"/rpicopter/");
 	if (ret<0) {
 		printf("Failed to initiate config! [%s]\n", strerror(ret));	
 		return -1;
 	}
 	flight_threshold = ps3config.throttle[0]+50;
-
-	ret=flog_open("/rpicopter");                                                
-	if (ret<0) {                                                                 
-		printf("Failed to initiate log! [%s]\n", strerror(err));         
-		return -1;                                                               
-	}   
 
 	if (!nocontroller) {
 		ret=rec_open("/dev/input/js0",&js[0]);

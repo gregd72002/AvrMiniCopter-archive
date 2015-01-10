@@ -18,6 +18,7 @@
 
 #define CAM_CMD "/usr/local/bin/camera_streamer.sh"
 char cam_cmd[128];
+int verbose;
 
 #define BUF_SIZE 1024 //receiving buffer
 unsigned char buf[BUF_SIZE];
@@ -32,7 +33,6 @@ struct sockaddr_in tmpaddress;
 socklen_t addrlen = sizeof(tmpaddress);
 
 char cmd[256];
-int verbose = 1;
 int background = 0;
 int stop = 0;
 
@@ -146,6 +146,7 @@ int main(int argc, char **argv)
 	struct timespec time_now,time_prev;
 	struct timespec *dt;
 	long dt_ms = 0;
+	verbose = 1;
 
 	int option;
 

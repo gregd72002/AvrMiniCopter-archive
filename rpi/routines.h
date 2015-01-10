@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+extern int verbose;
+
 /*
 ** packi16() -- store a 16-bit int into a char buffer (like htons())
 */ 

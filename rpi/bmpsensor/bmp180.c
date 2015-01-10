@@ -142,6 +142,7 @@ int bs_open()
 }
 
 int bs_reset() {
+	float p0 = 0;
 	for (int i=0;i<BUF_SIZE*10;i++) { //get some initial samples 
 		if (prepareTemperature()<0) {
 			printf("error setting temp\n");
@@ -162,9 +163,14 @@ int bs_reset() {
 			return -1;
 		}
 
+		p0 += bs.p;
+
 		bs.p0 = bs.p;
 		bs.alt = altitude(bs.p, bs.p0);
 	}
+
+	bs.p0 = p0 / (BUF_SIZE*10);
+	bs.alt = altitude(bs.p, bs.p0);
 
 	if (prepareTemperature()<0) {
 		printf("error setting temp\n");

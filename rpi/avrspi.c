@@ -17,6 +17,10 @@
 
 #include <stdio.h>
 
+#include "avrconfig.h"
+#include "flightlog.h"
+#include "mpu.h"
+
 #define MAX_TCP_CLIENTS 6
 #define MAX_UDP_CLIENTS 6
 
@@ -24,6 +28,8 @@
 //avrspi will keep SPI transfer active by sending MSG_RATE messages every MSG_PERIOD
 #define MSG_RATE 6 
 #define MSG_PERIOD 25 //ms
+
+int verbose;
 
 int msg_counter = 0;
 
@@ -33,6 +39,8 @@ int local_buf_c=0;
 #define BUF_SIZE 64
 
 int portno = 1030;
+
+struct timespec time_now;
 /* UDP */
 #define CLIENT_TIMEOUT 10
 struct sockaddr_in uaddress[MAX_UDP_CLIENTS];
@@ -41,7 +49,7 @@ unsigned char ubuf[BUF_SIZE]; //input udp buffer
 struct sockaddr_in tmpaddress;
 socklen_t addrlen = sizeof(tmpaddress);
 int usock;
-struct timespec udp_time_now,udp_time_prev,udp_last_msg;
+struct timespec udp_time_prev;
 /* UDP END */
 
 /* TCP */
@@ -51,14 +59,27 @@ unsigned char buf[MAX_TCP_CLIENTS][BUF_SIZE]; //input tcp buffer for each client
 unsigned short buf_c[MAX_TCP_CLIENTS];
 /* TCP END */
 
-int verbose = 1;
+/* CONFIG */
+int avrstatus = -1;
+int autoconfig = 1;
+struct timespec reset_time_prev;
+int reset_timeout = 0;
+
+#define CFG_PATH "/rpicopter/"
+struct s_config config;
+/* END CONFIG */
+
 int spi = 1;
 int echo = 0;
 int background = 0;
 int stop = 0;
+int log_mode;
 
-struct timespec spi_time_now,spi_time_prev,spi_last_msg;
+
+struct timespec spi_time_prev,spi_last_msg;
 struct timespec *dt;
+
+void reset_avr();
 
 void catch_signal(int sig)
 {
@@ -114,20 +135,15 @@ void ping_back(struct local_msg *m, struct sockaddr_in *c) {
 void process_msg_l(struct local_msg *m) {
 	switch (m->v) {
 		case 0: break;
-		case 1: 
-			if (verbose) printf("Reset AVR\n");
-			linuxgpio_initpin(25);
-			linuxgpio_highpulsepin(25,500);
-			linuxgpio_close();
-		break;
-		case 2: //get number of SPI errors 
+		case 1: autoconfig = 1; reset_avr(); break; 
+		case 2: autoconfig = 0; reset_avr(); break; 
+		case 3: //get number of SPI errors 
 			struct local_msg lm;
 			lm.t = 253; lm.v=spi_crc_err;
 			local_buf[local_buf_c++] = lm;
 			printf("%u %i\n",lm.t,lm.v);
 			break;
-		//case 10: start_flog(); return head_len; break;
-		//case 11: stop_flog(); return head_len; break;
+		case 4: flog_save(); break;
 		default: printf("Unknown local message: %u\n",m->v);
 	}
 }
@@ -143,6 +159,7 @@ void process_msg(struct local_msg *m) {
 		if (spi) {
 			local2avr(m,&am);
 			spi_sendMsg(&am);
+			flog_process_msg(&am);
 		}
 		clock_gettime(CLOCK_REALTIME, &spi_last_msg);	
 		msg_counter++;
@@ -182,6 +199,102 @@ void process_tcp_queue(int client) {
 	}
 }
 
+void reset_avr() {
+	if (verbose) printf("Reset AVR\n");
+	linuxgpio_initpin(25);
+	linuxgpio_highpulsepin(25,500);
+	linuxgpio_close();
+	avrstatus=-1;
+	if (autoconfig) {
+		int ret = config_open(&config,CFG_PATH);
+		if (ret<0) {
+			printf("Disabling AUTOCONFIG\n");
+			//printf("Failed to initiate config! [%s]\n", strerror(ret));	
+			autoconfig = 0;
+			return;
+		}
+		clock_gettime(CLOCK_REALTIME, &reset_time_prev);
+		reset_timeout = 2000;
+	}
+}
+
+void sendConfig() {
+        spi_sendIntPacket(3,0); //initial mode
+        spi_sendIntPacket(2 ,log_mode); //log mode
+
+        int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
+        spi_sendIntPacket(4,gyro_orientation);
+
+        spi_sendIntPacket(9,config.mpu_addr);
+
+        spi_sendIntPacket(17,config.throttle_min);
+        spi_sendIntPacket(18,config.throttle_inflight);
+
+        for (int i=0;i<4;i++)
+                spi_sendIntPacket(5+i,config.motor_pin[i]);
+
+        spi_sendIntPacket(69,config.baro_f);
+        //PIDS
+        for (int i=0;i<3;i++)
+                for (int j=0;j<5;j++) {
+                        spi_sendIntPacket(100+i*10+j,config.r_pid[i][j]);
+                        spi_sendIntPacket(200+i*10+j,config.s_pid[i][j]);
+                }
+
+        for (int i=0;i<5;i++) {
+                spi_sendIntPacket(70+i,config.accel_pid[i]);
+                spi_sendIntPacket(80+i,config.alt_pid[i]);
+                spi_sendIntPacket(90+i,config.vz_pid[i]);
+        }
+
+        spi_sendIntPacket(130,config.a_pid[0]);
+
+        int config_done = 1;
+        spi_sendIntPacket(255,config_done);
+}
+
+void do_avr_init() {
+	if (avrstatus==5) return;
+	if (autoconfig==0) return;
+	static int prev_status = -1;
+	static long dt_ms;
+	struct timespec *dt;
+
+	dt = TimeSpecDiff(&time_now,&reset_time_prev);
+	dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
+	if (dt_ms>reset_timeout) { //we exceeded timeout waiting for a status change
+		reset_avr();
+		prev_status = -1;
+		return;
+	}
+
+	if (prev_status == avrstatus) return;
+	prev_status = avrstatus;
+	reset_time_prev = time_now;
+
+	if (verbose) printf("AVR status: %i\n",avrstatus);
+
+	switch(avrstatus) {
+		case -1: break;
+		case 0: reset_avr(); prev_status = -1; break; //AVR should boot into status 1 so 0 means something wrong
+		case 1: sendConfig(); prev_status = avrstatus = -1; spi_sendIntPacket(255,2); reset_timeout=2000; break;
+		case 2: break; //AVR should arm motors and set status to 3
+		case 3: break; //AVR is initializing MPU 
+		case 4: reset_timeout=20000; break; //AVR is calibration gyro
+		case 5: if (verbose) printf("Initialization OK.\n"); break;
+		case 255: printf("AVRCONFIG: Gyro calibration failed!\n"); reset_avr(); break; //calibration failed
+		default: printf("AVRCONFIG: Unknown AVR status %i\n",avrstatus); break;
+	}
+}
+
+void process_avr_msg(struct avr_msg *m) { //will be called for every received msg from AVR
+	flog_process_avrmsg(m);
+
+	switch (m->t) {
+		case 255: avrstatus = m->v; break;
+	}
+}
+
 void print_usage() {
 	printf("-d run in background\n");
 	printf("-e run echo mode (useful for debugging)\n");
@@ -200,14 +313,15 @@ int main(int argc, char **argv)
 	int i,j,ret;
 	unsigned char bufout[BUF_SIZE];
 	struct avr_msg dummy_msg = {t: 255, v: 254};
+	struct avr_msg status_msg = {t: 255, v: 0};
 	long dt_ms = 0;
 
+	clock_gettime(CLOCK_REALTIME, &time_now);
+
 	clock_gettime(CLOCK_REALTIME, &spi_time_prev);
-	clock_gettime(CLOCK_REALTIME, &spi_time_now);
 
 	//we use this to measure UDP connection time each second
 	clock_gettime(CLOCK_REALTIME, &udp_time_prev);
-	clock_gettime(CLOCK_REALTIME, &udp_time_now);
 
 	int option;
 	verbose = 1;
@@ -265,6 +379,9 @@ int main(int argc, char **argv)
 	}
 	printf("Socket created on port %i\n", portno);
 
+	flog_init(CFG_PATH);
+	log_mode = flog_getmode();
+
 	if (listen(sock[0],3) < 0) {
 		perror("listen");
 		stop=1;
@@ -287,9 +404,12 @@ int main(int argc, char **argv)
 		}
 	}
 
+	reset_avr();
+
 	clock_gettime(CLOCK_REALTIME, &spi_last_msg);
 
 	if (verbose) printf("Starting main loop\n");
+
 	while (!stop) {
 		FD_ZERO(&readfds);
 		max_fd = 0;
@@ -309,12 +429,13 @@ int main(int argc, char **argv)
 			stop=1;
 		}
 
+		clock_gettime(CLOCK_REALTIME, &time_now);
+
 		//check for orphan UDP connections
-		clock_gettime(CLOCK_REALTIME, &udp_time_now);
-		dt = TimeSpecDiff(&udp_time_now,&udp_time_prev);
+		dt = TimeSpecDiff(&time_now,&udp_time_prev);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 		if (dt_ms>1000) {
-			udp_time_prev = udp_time_now;
+			udp_time_prev = time_now;
 			for (i=0;i<MAX_UDP_CLIENTS;i++)
 				if (uclients[i]>0) {
 					uclients[i]--;
@@ -378,11 +499,14 @@ int main(int argc, char **argv)
 				}
 			}
 		}
-		//send out any available messages to clients
-		for (i=0;i<spi_buf_c;i++)
+		//process of SPI received messages
+		for (i=0;i<spi_buf_c;i++) {
+			process_avr_msg(&spi_buf[i]);
 			avr2local(&spi_buf[i],&local_buf[local_buf_c++]);
+		}
 		spi_buf_c = 0;
 
+		//send out any available messages to clients
 		if (local_buf_c*LOCAL_MSG_SIZE>BUF_SIZE) {
 			printf("output buffer overflow (bufout)!");
 			local_buf_c = 0;
@@ -419,15 +543,20 @@ int main(int argc, char **argv)
 
 		local_buf_c = 0;
 
+		do_avr_init(); 
+		flog_loop();
+
 		//ping avr if needed
-		clock_gettime(CLOCK_REALTIME, &spi_time_now);
-		dt = TimeSpecDiff(&spi_time_now,&spi_time_prev);
+		dt = TimeSpecDiff(&time_now,&spi_time_prev);
 		dt_ms = dt->tv_sec*1000 + dt->tv_nsec/1000000;
 		if (dt_ms>=MSG_PERIOD) {
-			spi_time_prev = spi_time_now;
-			if (spi) for (i=msg_counter;i<MSG_RATE;i++) spi_sendMsg(&dummy_msg);
+			spi_time_prev = time_now;
+			if (spi) for (i=msg_counter;i<MSG_RATE;i++) 
+					if (i==msg_counter && autoconfig && avrstatus!=5) spi_sendMsg(&status_msg);
+					else spi_sendMsg(&dummy_msg);
 			msg_counter = 0;
 		}
+
 	}
 
 	if (echo) spi_close();

@@ -12,7 +12,7 @@ extern int spi_buf_c;
 extern int spi_crc_err;
 
 void spi_sendMsg(struct avr_msg *m);
-void spi_sendIntPacket(uint8_t t, int16_t *v);
+void spi_sendIntPacket(uint8_t t, int16_t v);
 
 int spi_writeBytes(uint8_t *data, unsigned int len);
 

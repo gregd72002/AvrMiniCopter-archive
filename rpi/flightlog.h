@@ -11,11 +11,23 @@ struct s_flog {
 	float v[MAX_VALS];
 };
 
-int flog_open(const char *path);
+void flog_init(const char *path);
+
+int flog_getmode();
 
 int flog_push(int n, ...);
 
 int flog_save();
+
+void flog_cfg_save();
+
+void flog_reset();
+
+void flog_loop();
+
+void flog_process_msg(struct avr_msg *m);
+
+void flog_process_avrmsg(struct avr_msg *m);
 
 
 #endif

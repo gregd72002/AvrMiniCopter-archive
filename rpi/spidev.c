@@ -109,13 +109,14 @@ int spi_writeBytes(uint8_t *data, unsigned int len) {
 }
 
 void spi_sendMsg(struct avr_msg *m) {
-    spi_sendIntPacket(m->t,&m->v);
+    spi_sendIntPacket(m->t,m->v);
 }
 
-void spi_sendIntPacket(uint8_t t, int16_t *v) {
+void spi_sendIntPacket(uint8_t t, int16_t v) {
     static unsigned char b[4];
+    int16_t *vptr = &v;
     b[0] = t;
-    memcpy(b+1,v,2);
+    memcpy(b+1,vptr,2);
 
     spi_writeBytes(b,3);
 }
