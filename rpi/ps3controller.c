@@ -47,6 +47,7 @@ struct sockaddr_in address;
 struct hostent *server;
 
 int nocontroller = 0;
+int cam_seq = 0;
 
 int flight_threshold;
 
@@ -157,8 +158,14 @@ void do_adjustments(struct s_rec *js) {
 
 	switch (js->aux) {
 		case 8: //L2
+			memset(str, '\0', 128);
+			sprintf(str, "/usr/local/bin/vidsnap.sh %05d ", cam_seq++);
+			ret=system(str);
 			break;
 		case 10: //L1
+			memset(str, '\0', 128);
+			sprintf(str, "/usr/local/bin/picsnap.sh %05d ", cam_seq++);
+			ret=system(str);
 			break;
 		case 11: //R1
 			if (alt_hold) {
