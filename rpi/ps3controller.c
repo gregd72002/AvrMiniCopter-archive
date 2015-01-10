@@ -21,6 +21,8 @@
 
 #include "routines.h"
 
+#define CONFIG_PATH "/etc/avrminicopter/"
+
 struct ps3_config ps3config;
 int verbose; 
 
@@ -382,7 +384,7 @@ int main(int argc, char **argv) {
 
 
 
-	ret=ps3config_open(&ps3config,"/rpicopter/");
+	ret=ps3config_open(&ps3config,CONFIG_PATH);
 	if (ret<0) {
 		printf("Failed to initiate config! [%s]\n", strerror(ret));	
 		return -1;

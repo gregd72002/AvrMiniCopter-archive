@@ -65,7 +65,7 @@ int autoconfig = 1;
 struct timespec reset_time_prev;
 int reset_timeout = 0;
 
-#define CFG_PATH "/rpicopter/"
+#define CFG_PATH "/etc/avrminicopter/"
 struct s_config config;
 /* END CONFIG */
 

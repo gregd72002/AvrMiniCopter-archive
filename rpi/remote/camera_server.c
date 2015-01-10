@@ -108,6 +108,7 @@ void stopCam() {
 	if (verbose) printf("Executing: %s\n",cmd);
 	ret = system(cmd);
 	if (ret==0) cam_active = 0;
+	//stop video capture
 	if (verbose) printf("Stoping camera_streamer returned: %i\n",ret);
 }
 
@@ -130,6 +131,9 @@ void processMsg(int client,unsigned char *buf, int len) {
 		case 1: stopCam(); 
 			clients[client] = 0;
 			break;
+		case 2: break; //take picture
+		case 3: break; //start video capture/save
+		case 4: break; //stop video capture
 		default: printf("Unknown msg type received: %i\n",type);
 	}
 
