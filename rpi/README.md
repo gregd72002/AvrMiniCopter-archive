@@ -9,6 +9,8 @@ You will need a module board (i.e. Arduino Pro Mini) and Raspberry Pi or similar
 ## Features
 * 2 fly modes - Auto-level & Acro
 * Altitude hold
+* FPV / video flying
+* Wifi support
 * learner mode (attach 2 controller simultaneously - one for the teacher and one for the learner)
 * web-based management portal for adjusting PIDs (use your bluetooth phone/tablet to configure, tune it, play videos and watch pictures, review flight logs & debug)
 * log charting
@@ -18,10 +20,6 @@ You will need a module board (i.e. Arduino Pro Mini) and Raspberry Pi or similar
 * Bluetooth and USB controller support (i.e. PS3 gamepad)
 * MPU6050 / MPU9150 gyro
 * BMP085 / BMP180 barometer
-
-## Roadmap
-* support for WIFI controllers (Android & IOS)
-* GPS & Waypoint navigation
 
 ## Requirements
 * AVR board (i.e. Arduino Pro mini 16Mhz, 32kb) - it's a bargain on ebay
