@@ -284,6 +284,8 @@ int process_command() {
 					  case 0: sendPacket(255,status); break;
 					  case 1: sendPacket(254,crc_err); break;
 					  case 2: status = 2; break;
+					  case 3: sendPacket(253,SPI_osize); break;
+					  case 4: sendPacket(252,SPI_isize); break;
 					  case 254: break; //dummy - used for SPI queued message retrieval  
 				  }
 				  break;
