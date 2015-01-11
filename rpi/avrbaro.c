@@ -94,7 +94,9 @@ void loop() {
 	int ret;
 	clock_gettime(CLOCK_REALTIME,&t2);                                           
 	ts = t1 = t2;
-	delay = 50;
+	delay = 20;
+	int alt = 0;
+	int alt_c = 0;
 	if (verbose) printf("AVRBARO: Starting main loop...\n");
 	while (!stop) {
 		clock_gettime(CLOCK_REALTIME,&t2);                                           
@@ -113,11 +115,17 @@ void loop() {
 
 			ret = bs_update(c*dt_ms);
 			if (ret>=0) {
-				if (verbose==2) {
-					printf("T: %2.2f\tAlt: %2.1f\tP: %2.2f\n",bs.t,bs.alt*100.f,bs.p);
+				if (ret == 1) { //pressure updated
+					alt += (bs.alt*100.f);
+					alt_c++;
+					if (alt_c == 3) {
+						sendMsg(14,alt/alt_c); //in cm
+						if (verbose>=2)
+							printf("T: %2.2f\tAlt: %i\tP: %2.2f\n",bs.t,alt/alt_c,bs.p);
+						alt_c = 0;
+						alt = 0;
+					}
 				}
-				if (ret == 1) //pressure updated
-					sendMsg(14,bs.alt*100.f); //in cm
 				else if (ret == 2) c = 0; //end of cycle
 			} else 
 				if (verbose) printf("AVRBARO: Barometer reading error!\n");

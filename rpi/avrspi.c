@@ -26,8 +26,8 @@
 
 
 //avrspi will keep SPI transfer active by sending MSG_RATE messages every MSG_PERIOD
-#define MSG_RATE 6 
-#define MSG_PERIOD 25 //ms
+#define MSG_RATE 8 
+#define MSG_PERIOD 50 //ms
 
 int verbose;
 
@@ -363,7 +363,7 @@ int main(int argc, char **argv)
 	}
 
 
-	/* Create name. */
+	/* Create name sock, usock */
 	bzero((char *) &address, sizeof(address));
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
@@ -373,10 +373,12 @@ int main(int argc, char **argv)
 		perror("binding stream socket");
 		exit(1);
 	}
+
 	if (bind(usock, (struct sockaddr *) &address, sizeof(struct sockaddr_in))) {
 		perror("binding datagram socket");
 		exit(1);
 	}
+
 	printf("Socket created on port %i\n", portno);
 
 	flog_init(CFG_PATH);
@@ -446,7 +448,13 @@ int main(int argc, char **argv)
 		}
 		//check UDP
 		if (!stop && FD_ISSET(usock, &readfds)) {
-			ret = recvfrom(usock, ubuf, BUF_SIZE, 0, (struct sockaddr *)&tmpaddress, &addrlen);
+                        ret = 0;
+                        int t = 0;
+                        do {
+                                t = recvfrom(usock, ubuf+ret, BUF_SIZE-ret, MSG_DONTWAIT, (struct sockaddr *)&tmpaddress, &addrlen);
+                                if (t>0) ret+=t;
+                        } while (t>0);
+                      //  ret = recvfrom(usock, ubuf, BUF_SIZE, 0, (struct sockaddr *)&tmpaddress, &addrlen);
 			if (ret<=0) {
 				printf("UDP recvfrom error? %i\n",ret);
 			} else {
