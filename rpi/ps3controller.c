@@ -316,6 +316,7 @@ void loop() {
 	}
 
 	sendMsg(13,ps3config.throttle[0]);
+	sendMsg(15,0);
 }
 
 void print_usage() {

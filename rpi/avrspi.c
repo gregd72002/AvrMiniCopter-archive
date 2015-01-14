@@ -204,6 +204,7 @@ void reset_avr() {
 	linuxgpio_initpin(25);
 	linuxgpio_highpulsepin(25,500);
 	linuxgpio_close();
+	mssleep(2000);
 	avrstatus=-1;
 	if (autoconfig) {
 		int ret = config_open(&config,CFG_PATH);

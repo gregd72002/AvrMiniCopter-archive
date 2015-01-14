@@ -62,7 +62,7 @@ int flog_getmode() {
 }
 
 void flog_reset() {
-	sprintf(c_log_f,"%slog/flight-%05d.t%i.log%c",_path,log_count,log_mode,'\0');
+	sprintf(c_log_f,"/rpicopter/log/flight-%05d.t%i.log%c",log_count,log_mode,'\0');
 	if (verbose) printf("AVRSPI: Next log file: %s\n",c_log_f);
 	ptr = flog;
 	buf_overrun = 0;

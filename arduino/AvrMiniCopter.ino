@@ -202,7 +202,7 @@ int process_command() {
 #ifdef ALTHOLD
 			case 14: //altitude reading in cm - convert it into altitude error 
 				 static float b;
-				 baro_counter = 200; //use this baro reading not more than 200 times (this is 1000ms as the loop goes with 5ms)
+				 baro_counter = 200; //use this baro reading not more than 200 times (this is 1000ms as the loop goes with 200Hz - 5ms)
 				 if (!buf_space(&alt_buf)) b = buf_pop(&alt_buf); //buffer full
 				 else b = alt_base;
 				 alt_err = v - (b + alt_corr);
