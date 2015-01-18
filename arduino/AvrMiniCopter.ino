@@ -364,6 +364,7 @@ void log_motor() {
 
 
 void log_debug() {
+	if (log_mode==1) log_accel(); 
 	if (!(loop_count%25)) {
 		//
 		Serial.println();
@@ -518,11 +519,11 @@ void controller_loop() {
 	else pid_update(&pid_s[0],yaw_target-mympu.ypr[0],loop_s); 
 	//yaw pids end
 
-	if (fly_mode == 0) {
+	if (fly_mode == 0) { //STAB
 		for (int i=1;i<3;i++)                                               
 			pid_update(&pid_s[i],yprt[i]-mympu.ypr[i],loop_s);
 
-	} else if (fly_mode == 1) {
+	} else if (fly_mode == 1) { //RATE
 		for (int i=1;i<3;i++)                                               
 			pid_update(&pid_s[i],yprt[i]*pid_acro_p,loop_s);
 	} 
@@ -567,7 +568,10 @@ int gyroCal() {
 	static byte c = 0;
 	static unsigned int loop_c = 0;
 	loop_c++;
-	if (loop_c>50000) status=255;
+	if (loop_c>65000) {
+		status=255;
+		return -1;
+	}
 	ret = mympu_update();
 	if (ret!=0) {
 #ifdef DEBUG
@@ -610,9 +614,11 @@ void loop() {
 			break;
 		case 3: 
 			ret = mympu_open(mpu_addr,200,gyro_orientation);
-			delay(150);
-			if (ret == 0) 
+			//delay(150);
+			if (ret == 0) { 
 				status = 4;
+				mympu_reset_fifo();
+			}
 			break;
 		case 4:
 			if (gyroCal()==0) 

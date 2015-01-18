@@ -51,7 +51,7 @@ void SPI_sendBytes(uint8_t *data, byte len) {
 
 int SPI_getPacket(byte *b) {
     //byte c;
-    int j = SPI_isize;
+    int j = SPI_isize; //number of bytes in the buffer
 
     if (j<4) return -1; //type, val(2), crc
 

@@ -204,8 +204,9 @@ void reset_avr() {
 	linuxgpio_initpin(25);
 	linuxgpio_highpulsepin(25,500);
 	linuxgpio_close();
-	mssleep(2000);
+	//mssleep(2000);
 	avrstatus=-1;
+	
 	if (autoconfig) {
 		int ret = config_open(&config,CFG_PATH);
 		if (ret<0) {
@@ -250,8 +251,7 @@ void sendConfig() {
 
         spi_sendIntPacket(130,config.a_pid[0]);
 
-        int config_done = 1;
-        spi_sendIntPacket(255,config_done);
+        spi_sendIntPacket(255,2);
 }
 
 void do_avr_init() {
@@ -278,7 +278,7 @@ void do_avr_init() {
 	switch(avrstatus) {
 		case -1: break;
 		case 0: reset_avr(); prev_status = -1; break; //AVR should boot into status 1 so 0 means something wrong
-		case 1: sendConfig(); prev_status = avrstatus = -1; spi_sendIntPacket(255,2); reset_timeout=2000; break;
+		case 1: sendConfig(); prev_status = avrstatus = -1; reset_timeout=2000; break;
 		case 2: break; //AVR should arm motors and set status to 3
 		case 3: break; //AVR is initializing MPU 
 		case 4: reset_timeout=20000; break; //AVR is calibration gyro
