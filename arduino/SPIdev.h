@@ -4,7 +4,7 @@
 #include <SPI.h>
 #include "crc8.h"
 
-#define BUF_SIZE 64 //this is 16 msg (each msg has 4 bytes) 
+#define BUF_SIZE 32 //this is 16 msg (each msg has 4 bytes) 
 
 volatile byte SPI_iptr = 0;                                                       
 volatile byte SPI_isize = 0;                                                      
@@ -41,7 +41,7 @@ void SPI_sendBytes(uint8_t *data, byte len) {
     data[len] = CRC8((byte*)data,len);
     len++;
 
-    for (int i=0;i<len;i++) {
+    for (byte i=0;i<len;i++) {
         if (SPI_optr >= BUF_SIZE) SPI_optr = 0;
         SPI_obuf[SPI_optr++] = data[i];
         if (++SPI_osize > BUF_SIZE) SPI_osize = BUF_SIZE;                          
@@ -51,11 +51,11 @@ void SPI_sendBytes(uint8_t *data, byte len) {
 
 int SPI_getPacket(byte *b) {
     //byte c;
-    int j = SPI_isize; //number of bytes in the buffer
+    byte j = SPI_isize; //number of bytes in the buffer
 
     if (j<4) return -1; //type, val(2), crc
 
-    for (int i=0;i<4;i++)
+    for (byte i=0;i<4;i++)
         SPI_getByte(b+i);
 
     if (CRC8(b,3)!=b[3]) {

@@ -83,7 +83,7 @@ byte packet[4];
 int yprt[4] = {0,0,0,0};
 
 void motor_idle() {
-	for (int i=0;i<4;i++)
+	for (int8_t i=0;i<4;i++)
 		myservo[i].writeMicroseconds(motor_pwm[0]);
 }
 
@@ -96,8 +96,8 @@ void testMotor(int m,int v) {
 }
 
 
-void armMotors() {
-	for (int i=0;i<4;i++)
+void initMotors() {
+	for (int8_t i=0;i<4;i++)
 		initMotor(i);
 	motor_idle();
 }
@@ -110,7 +110,7 @@ void sendPacket(byte t, int v) {
 }
 
 void initAVR() {
-	for (int i=0;i<3;i++) {
+	for (int8_t i=0;i<3;i++) {
 		pid_init(&pid_r[i]);
 		pid_init(&pid_s[i]);
 	}
@@ -164,7 +164,7 @@ void setup() {
 #endif
 }
 
-int process_command() { 
+void process_command() { 
 	static unsigned long last_command = millis();
 	if (millis() - last_command>1000) {
 		alt_hold=0;
@@ -294,11 +294,10 @@ int process_command() {
 				  byte c = packet[3];
 				  Serial.print("Unknown command: "); Serial.print(t); Serial.print(" "); Serial.print(v); Serial.print(" "); Serial.println(c);
 #endif
-				  return 0;
+				break;
 		}
 	}
 
-	return 0;
 }
 
 
@@ -323,22 +322,23 @@ void log_altitude() {
 #endif
 
 void log_accel() {
+	int8_t i;
 	static float _accelMax[3] = {0.f,0.f,0.f};
 	static float _accelMin[3] = {0.f,0.f,0.f};
 
-	for (int i=0;i<3;i++) {
+	for (i=0;i<3;i++) {
 		if (mympu.accel[i]<_accelMin[i]) _accelMin[i] = mympu.accel[i];
 		if (mympu.accel[i]>_accelMax[i]) _accelMax[i] = mympu.accel[i];
 	}
 
 	if ((loop_count%20)==0) { //200Hz so 10times a sec... -> every 100ms
-		for (int i=0;i<3;i++) {
+		for (i=0;i<3;i++) {
 			sendPacket(12+i,_accelMax[i]*1000.f);
 			_accelMax[i] = 0.f;
 		}
 	}
 	else if ((loop_count%20)==10) { //200Hz so 10times a sec... -> every 100ms
-		for (int i=0;i<3;i++) {
+		for (i=0;i<3;i++) {
 			sendPacket(15+i,_accelMin[i]*1000.f);
 			_accelMin[i] = 0.f;
 		}
@@ -346,19 +346,19 @@ void log_accel() {
 }
 
 void log_gyro() {
-	for (int i=0;i<3;i++)
+	for (int8_t i=0;i<3;i++)
 		sendPacket(1+i,mympu.gyro[i]*100.f);
 }
 
 void log_quat() {
 
-	for (int i=0;i<3;i++)
+	for (int8_t i=0;i<3;i++)
 		sendPacket(4+i,mympu.ypr[i]*100.f);
 	sendPacket(7,yaw_target*100.f);
 }
 
 void log_motor() {
-	for (int i=0;i<4;i++)
+	for (int8_t i=0;i<4;i++)
 		sendPacket(8+i,m[i]);
 }
 
@@ -416,6 +416,7 @@ float loop_s = 0.005f;
 unsigned long p_millis = 0;
 
 void controller_loop() {
+	int8_t i;
 #ifdef MPU9150
 	ret = mympu_update_compass();
 	if (ret < 0) {
@@ -520,16 +521,16 @@ void controller_loop() {
 	//yaw pids end
 
 	if (fly_mode == 0) { //STAB
-		for (int i=1;i<3;i++)                                               
+		for (i=1;i<3;i++)                                               
 			pid_update(&pid_s[i],yprt[i]-mympu.ypr[i],loop_s);
 
 	} else if (fly_mode == 1) { //RATE
-		for (int i=1;i<3;i++)                                               
+		for (i=1;i<3;i++)                                               
 			pid_update(&pid_s[i],yprt[i]*pid_acro_p,loop_s);
 	} 
 
 	//do RATE PID                                                            
-	for (int i=0;i<3;i++) {                                                  
+	for (i=0;i<3;i++) {                                                  
 		pid_update(&pid_r[i],pid_s[i].value-mympu.gyro[i],loop_s);
 	}                                                                        
 
@@ -544,26 +545,20 @@ void controller_loop() {
 	if (yprt[3] < motor_pwm[1]) {
 		motor_idle();
 		yaw_target = mympu.ypr[0];
-		for (int i=0;i<3;i++) {                                              
+		for (i=0;i<3;i++) {                                              
 			pid_reset(&pid_r[i]);
 			pid_reset(&pid_s[i]);
 		}                                                                    
 		return;
 	}
 
-	for (int i=0;i<4;i++) { 
+	for (i=0;i<4;i++) { 
 		m[i] = m[i]<motor_pwm[1]?motor_pwm[1]:m[i];
 		myservo[i].writeMicroseconds(m[i]);
 	}
 }
 
-int check_init() {
-	armMotors();
-
-	return 0;
-}
-
-int gyroCal() {
+int8_t gyroCal() {
 	static float accel = 0.0f;
 	static byte c = 0;
 	static unsigned int loop_c = 0;
@@ -609,8 +604,8 @@ void loop() {
 
 	switch (status) {
 		case 2:
-			if (check_init()==0)
-				status = 3;
+			initMotors();
+			status = 3;
 			break;
 		case 3: 
 			ret = mympu_open(mpu_addr,200,gyro_orientation);
