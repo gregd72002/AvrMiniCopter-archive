@@ -16,6 +16,7 @@ struct s_config {
     signed char gyro_orient[9];
     int motor_pin[4];
     int mpu_addr;
+    int reset_gpio;
 };
 
 int config_open(struct s_config *c, const char *path);

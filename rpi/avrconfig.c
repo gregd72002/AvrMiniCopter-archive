@@ -48,6 +48,8 @@ int config_open(struct s_config *config, const char *path) {
 
         if (fscanf(f,"%i\t",&config->mpu_addr)!=1) state = 1;
 
+        if (fscanf(f,"%i\t",&config->reset_gpio)!=1) state = 1;
+
         fclose(f);
 
         fflush(NULL);
