@@ -74,7 +74,9 @@ unsigned int err_o = 0; //cumulative number of MPU/DMP reads that had overflow b
 uint8_t status = 0;
 uint8_t fly_mode;
 uint8_t log_mode;
-uint8_t gyro_orientation;
+
+//for identity matrix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
+uint8_t gyro_orientation = 136;
 
 float yaw_target;
 
@@ -130,7 +132,6 @@ void initAVR() {
 	status = 0;
 	fly_mode = 0;
 	log_mode = 0;
-	gyro_orientation = 136; //for identity matrix see inv_mpu documentation how this is calculated; this is overwritten by a config packet
 	crc_err = 0;
 	alt_hold = 0;
 	alt_hold_target = 0.f;
@@ -166,7 +167,7 @@ void setup() {
 
 void process_command() { 
 	static unsigned long last_command = millis();
-	if (millis() - last_command>1000) {
+	if (millis() - last_command>2500) {
 		alt_hold=0;
 		yprt[0]=yprt[1]=yprt[2]=yprt[3]=0;
 	}
@@ -188,7 +189,8 @@ void process_command() {
 				yaw_target = mympu.ypr[0];    //when changing fly_mode during flight reset the yaw_target                                           
 				break;
 			case 4: 
-				gyro_orientation = v;
+				if (v==1) mympu_inverted = true;
+				else mympu_inverted = false;
 				break;
 
 			case 5: case 6: case 7: case 8: 
@@ -447,7 +449,11 @@ void controller_loop() {
 
 	loop_s = (float)(millis() - p_millis)/1000.0f;
 	p_millis = millis();
+#ifdef DEBUG
+	if (loop_s>0.05) { 
+#else
 	if (loop_s>0.01) { 
+#endif
 		status = 254;
 		motor_idle();
 		return;
@@ -608,7 +614,11 @@ void loop() {
 			status = 3;
 			break;
 		case 3: 
+#ifdef DEBUG
+			ret = mympu_open(mpu_addr,50,gyro_orientation);
+#else
 			ret = mympu_open(mpu_addr,200,gyro_orientation);
+#endif
 			//delay(150);
 			if (ret == 0) { 
 				status = 4;

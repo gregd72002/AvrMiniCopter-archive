@@ -14,6 +14,7 @@ struct s_mympu {
 };
 
 extern struct s_mympu mympu;
+extern bool mympu_inverted;
 
 int8_t mympu_open(short addr,unsigned int rate,unsigned short orient);
 int8_t mympu_update();

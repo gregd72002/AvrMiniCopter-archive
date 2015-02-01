@@ -10,9 +10,10 @@
 #define QUAT_SENS       1073741824.f //2^30
 
 #define EPSILON         0.0001f
-#define PI_2            1.57079632679489661923f
+#define PI_2            1.57079632679489661923f //PI/2
 
 struct s_mympu mympu;
+bool mympu_inverted = false;
 
 struct s_quat { float w, x, y, z; }; 
 
@@ -121,32 +122,34 @@ static inline float rad2deg( float rad )
 }
 
 static float test, sqy,sqz,sqw;
+
+
 static void quaternionToEuler( const struct s_quat *q, float* x, float* y, float* z )
 {
-	sqy = q->y * q->y;
-	sqz = q->z * q->z;
-	sqw = q->w * q->w;
+        sqy = q->y * q->y;
+        sqz = q->z * q->z;
+        sqw = q->w * q->w;
 
-	test = q->x * q->z - q->w * q->y;
+        test = q->x * q->z - q->w * q->y;
 
-	if( test > 0.5f - EPSILON )
-	{
-		*x = 2.f * atan2( q->y, q->w );
-		*y = PI_2;
-		*z = 0;
-	}
-	else if( test < -0.5f + EPSILON )
-	{
-		*x = -2.f * atan2( q->y, q->w );
-		*y = -PI_2;
-		*z = 0;
-	}
-	else
-	{
-		*x = atan2( 2.f * ( q->x * q->w + q->y * q->z ), 1.f - 2.f * ( sqz + sqw ) );
-		*y = asin( 2.f * test );
-		*z = atan2( 2.f * ( q->x * q->y - q->z * q->w ), 1.f - 2.f * ( sqy + sqz ) );
-	}
+        if( test > 0.5f - EPSILON )
+        {
+                *x = 2.f * atan2( q->y, q->w );
+                *y = PI_2;
+                *z = 0;
+        }
+        else if( test < -0.5f + EPSILON )
+        {
+                *x = -2.f * atan2( q->y, q->w );
+                *y = -PI_2;
+                *z = 0;
+        }
+        else
+        {
+                *x = atan2( 2.f * ( q->x * q->w + q->y * q->z ), 1.f - 2.f * ( sqz + sqw ) );
+                *y = asin( 2.f * test );
+                *z = atan2( 2.f * ( q->x * q->y - q->z * q->w ), 1.f - 2.f * ( sqy + sqz ) );
+        }
 }
 
 static inline float wrap_180(float x) {
@@ -178,7 +181,6 @@ int8_t mympu_update_compass() {
 }
 #endif
 
-
 int8_t mympu_update() {
 	/*
 	   do {
@@ -198,9 +200,7 @@ int8_t mympu_update() {
 	ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
 	if (ret!=0) return ret; 
 	if (fifoCount>1) { 
-		do { //empty fifo
-			ret = dmp_read_fifo(gyro,accel,q._l,NULL,&sensors,&fifoCount);
-		} while (fifoCount>1 && ret == 0);
+		mympu_reset_fifo();
 #ifdef DEBUG
 		Serial.print("ERR Fifocount: "); Serial.println(fifoCount); 
 #endif
@@ -213,12 +213,15 @@ int8_t mympu_update() {
 	q._f.z = (float)q._l[3] / (float)QUAT_SENS;
 
 	quaternionToEuler( &q._f, &mympu.ypr[2], &mympu.ypr[1], &mympu.ypr[0] );
-	/* need to adjust signs and do the wraps depending on the MPU mount orientation */ 
-	/* if axis is no centered around 0 but around i.e 90 degree due to mount orientation */
-	/* then do:  mympu.ypr[x] = wrap_180(90.f+rad2deg(mympu.ypr[x])); */
+
 	mympu.ypr[0] = -rad2deg(mympu.ypr[0]);
 	mympu.ypr[1] = -rad2deg(mympu.ypr[1]);
 	mympu.ypr[2] = -shift_180(rad2deg(mympu.ypr[2]));
+
+	mympu.gyro[0] = (float)gyro[2] / GYRO_SENS;
+	mympu.gyro[1] = (float)gyro[1] / GYRO_SENS;
+	mympu.gyro[2] = (float)gyro[0] / GYRO_SENS;
+
 
 	static Quaternion qq;
 	qq.w=q._f.w;
@@ -233,13 +236,23 @@ int8_t mympu_update() {
 	a.rotate(&qq);
 	mympu.accel[0] = (float)a.x/ACCEL_SENS;
 	mympu.accel[1] = (float)a.y/ACCEL_SENS;
-	//mympu.accel[2] = (float)a.z/ACCEL_SENS;
-	mympu.accel[2] = (float)a.z/ACCEL_SENS - mympu.gravity;
+	mympu.accel[2] = (float)a.z/ACCEL_SENS;
+	//mympu.accel[2] = (float)a.z/ACCEL_SENS - mympu.gravity;
 
-	mympu.gyro[0] = (float)gyro[2] / GYRO_SENS;
-	mympu.gyro[1] = (float)gyro[1] / GYRO_SENS;
-	mympu.gyro[2] = (float)gyro[0] / GYRO_SENS;
 
+	mympu.accel[1] *= -1.f;
+
+	if (mympu_inverted) {
+		mympu.ypr[1] *= -1.f; 
+		mympu.ypr[2] *= -1.f; 
+
+		mympu.gyro[1] *= -1.f; 
+		mympu.gyro[2] *= -1.f; 
+
+		mympu.accel[0] *= -1.f;
+		mympu.accel[1] *= -1.f;
+	} 
+		
 	_c++;
 
 	return 0;
