@@ -10,7 +10,7 @@ struct s_config {
     int baro_f;
     int alt_pid[5];
     int vz_pid[5];
-    signed char gyro_orient[9];
+    int mpu_inverted;
     int motor_pin[4];
     int mpu_addr;
 };

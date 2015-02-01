@@ -19,7 +19,6 @@
 
 #include "avrconfig.h"
 #include "flightlog.h"
-#include "mpu.h"
 
 #define MAX_TCP_CLIENTS 6
 #define MAX_UDP_CLIENTS 6
@@ -87,6 +86,10 @@ void catch_signal(int sig)
 	stop = 1;
 }
 
+void reset_baro() {
+	system("/usr/bin/killall avrbaro");
+}
+
 int udp_check_client(struct sockaddr_in *c) {
 	int i;
 	for (i=0;i<MAX_UDP_CLIENTS;i++)
@@ -143,7 +146,7 @@ void process_msg_l(struct local_msg *m) {
 			local_buf[local_buf_c++] = lm;
 			printf("%u %i\n",lm.t,lm.v);
 			break;
-		case 4: flog_save(); break;
+		case 4: reset_baro(); flog_save(); break;
 		default: printf("Unknown local message: %u\n",m->v);
 	}
 }
@@ -200,6 +203,7 @@ void process_tcp_queue(int client) {
 }
 
 void reset_avr() {
+	reset_baro();
 	if (verbose) printf("Reset AVR\n");
 	linuxgpio_initpin(25);
 	linuxgpio_highpulsepin(25,500);
@@ -224,8 +228,7 @@ void sendConfig() {
         spi_sendIntPacket(3,0); //initial mode
         spi_sendIntPacket(2 ,log_mode); //log mode
 
-        int gyro_orientation = inv_orientation_matrix_to_scalar(config.gyro_orient);
-        spi_sendIntPacket(4,gyro_orientation);
+        spi_sendIntPacket(4,config.mpu_inverted);
 
         spi_sendIntPacket(9,config.mpu_addr);
 

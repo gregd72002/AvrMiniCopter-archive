@@ -41,15 +41,11 @@ int config_open(const char *path) {
         if (fscanf(f,"%i\t%i",&config.a_pid[0],&config.baro_f)!=2) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
-        for (int i=0;i<9 && !state;i++)
-            if (fscanf(f,"%i\t",&config.gyro_orient[i])!=1) state = 1;
-        if (fscanf(f,"\n")<0) state=1;
-
         for (int i=0;i<4 && !state;i++)
             if (fscanf(f,"%i\t",&config.motor_pin[i])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
-        if (fscanf(f,"%i\t",&config.mpu_addr)!=1) state = 1;
+        if (fscanf(f,"%i\t%i\n",&config.mpu_addr,&config.mpu_inverted)!=2) state = 1;
 
         fclose(f);
 
