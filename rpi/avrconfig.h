@@ -14,7 +14,7 @@ struct s_config {
     int alt_pid[5];
     int vz_pid[5];
     int motor_pin[4];
-    int mpu_addr,mpu_inverted;
+    int mpu_addr,reset_gpio,mpu_inverted;
 };
 
 int config_open(struct s_config *c, const char *path);

@@ -205,8 +205,8 @@ void process_tcp_queue(int client) {
 void reset_avr() {
 	reset_baro();
 	if (verbose) printf("Reset AVR\n");
-	linuxgpio_initpin(25);
-	linuxgpio_highpulsepin(25,500);
+	linuxgpio_initpin(config.reset_gpio);
+	linuxgpio_highpulsepin(config.reset_gpio, 500);
 	linuxgpio_close();
 	//mssleep(2000);
 	avrstatus=-1;

@@ -42,7 +42,7 @@ int config_open(struct s_config *config, const char *path) {
             if (fscanf(f,"%i\t",&config->motor_pin[i])!=1) state = 1;
         if (fscanf(f,"\n")<0) state=1;
 
-        if (fscanf(f,"%i\t%i\n",&config->mpu_addr,&config->mpu_inverted)!=2) state = 1;
+        if (fscanf(f,"%i\t%i\t%i\n",&config->mpu_addr,&config->mpu_inverted, &config->reset_gpio)!=3) state = 1;
 
         fclose(f);
 
