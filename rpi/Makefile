@@ -11,7 +11,6 @@ LDFLAGS=$(CC_OPTS)
 
 INSTALL=install
 
-OBJ_PS3CONTROLLER=ps3controller.o routines.o ps3config.o ps3dev.o
 OBJ_AVRSPI=avrspi.o routines.o gpio.o spidev.o avrconfig.o flightlog.o
 OBJ_AVRSPI_CMD=avrspi_cmd.o routines.o
 OBJ_AVRBARO=avrbaro.o routines.o bmpsensor/libbs.a libs/libi2cdev.a
@@ -19,7 +18,7 @@ OBJ_AVRBARO=avrbaro.o routines.o bmpsensor/libbs.a libs/libi2cdev.a
 %.o: %.c                                                                         
 	$(CXX) -c $(CXXFLAGS) $(CXX_OPTS) $< -o $@ 
 
-all: _websockify ps3controller avrspi avrspi_cmd avrbaro _remote
+all: _websockify avrspi avrspi_cmd avrbaro _remote
 
 #modules:
 #	$(MAKE) -C spi-bcm2708-dma/
@@ -29,9 +28,6 @@ _websockify:
 
 _remote:
 	$(MAKE) -C remote/
-
-ps3controller: $(OBJ_PS3CONTROLLER)
-	$(CC) $(CFLAGS) $(OBJ_PS3CONTROLLER) -o ps3controller $(LDFLAGS) $(CC_OPTS) 
 
 avrspi: $(OBJ_AVRSPI)
 	$(CC) $(CFLAGS) $(OBJ_AVRSPI) -o avrspi $(LDFLAGS) $(CC_OPTS) 
@@ -55,11 +51,10 @@ install:
 	$(INSTALL) -m 0755 -d $(DESTDIR)/etc/init.d
 	$(INSTALL) -m 0755 -d $(DESTDIR)/etc/avrminicopter
 	$(INSTALL) -m 0755 -d $(DESTDIR)/usr/local/bin
-	$(INSTALL) -m 755 flog.config $(DESTDIR)/etc/avrminicopter/
-	$(INSTALL) -m 755 rpicopter.config $(DESTDIR)/etc/avrminicopter/
-	$(INSTALL) -m 755 S91avrminicopter $(DESTDIR)/etc/init.d/
-	$(INSTALL) -m 755 avrbaro.sh $(DESTDIR)/usr/local/bin/
-	$(INSTALL) -m 755 ps3controller $(DESTDIR)/usr/local/bin/
+	$(INSTALL) -m 755 utils/flog.config $(DESTDIR)/etc/avrminicopter/
+	$(INSTALL) -m 755 utils/rpicopter.config $(DESTDIR)/etc/avrminicopter/
+	$(INSTALL) -m 755 utils/S91avrminicopter $(DESTDIR)/etc/init.d/
+	$(INSTALL) -m 755 utils/avrbaro.sh $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi_cmd $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrbaro $(DESTDIR)/usr/local/bin/
@@ -72,7 +67,6 @@ clean:
 	cd websockify && $(MAKE) clean
 	cd remote && $(MAKE) clean
 #	cd spi-bcm2708-dma && $(MAKE) clean
-	rm -rf ps3controller 
 	rm -rf avrspi_cmd
 	rm -rf avrspi 
 	rm -rf avrbaro 
