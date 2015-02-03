@@ -1,0 +1,8 @@
+#!/bin/sh
+if [ "$1" == "start"  ]; then
+/usr/local/bin/avrspi -d
+/usr/local/bin/avrbaro.sh & 
+/usr/local/bin/camera_server -d
+/usr/local/bin/websockify -D 8888 127.0.0.1:1030
+fi
+exit 0;

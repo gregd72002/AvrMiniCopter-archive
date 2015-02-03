@@ -52,7 +52,13 @@ libs/libi2cdev.a:
 	$(MAKE) -C libs/i2cdev
 
 install:
+	$(INSTALL) -m 0755 -d $(DESTDIR)/etc/init.d
+	$(INSTALL) -m 0755 -d $(DESTDIR)/etc/avrminicopter
 	$(INSTALL) -m 0755 -d $(DESTDIR)/usr/local/bin
+	$(INSTALL) -m 755 flog.config $(DESTDIR)/etc/avrminicopter/
+	$(INSTALL) -m 755 rpicopter.config $(DESTDIR)/etc/avrminicopter/
+	$(INSTALL) -m 755 S91avrminicopter $(DESTDIR)/etc/init.d/
+	$(INSTALL) -m 755 avrbaro.sh $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 ps3controller $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi $(DESTDIR)/usr/local/bin/
 	$(INSTALL) -m 755 avrspi_cmd $(DESTDIR)/usr/local/bin/

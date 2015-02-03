@@ -236,8 +236,8 @@ int8_t mympu_update() {
 	a.rotate(&qq);
 	mympu.accel[0] = (float)a.x/ACCEL_SENS;
 	mympu.accel[1] = (float)a.y/ACCEL_SENS;
-	mympu.accel[2] = (float)a.z/ACCEL_SENS;
-	//mympu.accel[2] = (float)a.z/ACCEL_SENS - mympu.gravity;
+	//mympu.accel[2] = (float)a.z/ACCEL_SENS;
+	mympu.accel[2] = (float)a.z/ACCEL_SENS - mympu.gravity;
 
 
 	mympu.accel[1] *= -1.f;
